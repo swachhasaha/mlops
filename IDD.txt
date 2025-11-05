@@ -1,0 +1,157 @@
+Industrial Design Document
+CVAT Image Annotation Tool Deployment on AWS Infrastructure
+
+CVAT AWS Infrastructure Industrial Design Document
+1. Introduction
+This document details the architectural design for deploying a highly available, scalable, and resilient CVAT (Computer Vision Annotation Tool) environment on Amazon Web Services (AWS). 
+The infrastructure leverages Amazon EC2, PostgreSQL (for CVAT's database), Amazon S3 (for raw data and backups), Auto Scaling Group (ASG), and an Application Load Balancer (ALB).
+To design and implement a scalable, secure, and resilient AWS infrastructure for CVAT, enabling efficient image annotation workflows for machine learning operations.
+-------------
+
+Objectives
+Deploy CVAT with high availability and fault tolerance.
+
+Integrate PostgreSQL for metadata storage and S3 for dataset management.
+
+Enable auto-scaling and load balancing for performance optimization.
+
+Implement backup and disaster recovery mechanisms.
+
+Core Components
+
+Component	Role
+Amazon EC2	Hosts CVAT application and worker services
+Amazon RDS (PostgreSQL)	Stores annotation metadata, user roles, and task configurations
+Amazon S3	Stores raw images/videos and exported annotations
+Auto Scaling Group	Dynamically scales EC2 instances based on workload
+Elastic Load Balancer (ELB)	Distributes traffic across EC2 instances for high availability
+Amazon CloudWatch	Monitors system metrics and logs
+AWS Backup	Centralized backup for RDS and EC2 volumes
+
+----------
+
+Data Flow
+Data Upload: Raw images/videos are uploaded to S3.
+
+Task Creation: CVAT fetches data from S3 and creates annotation tasks.
+
+Annotation Process: Annotators label data via CVAT’s web interface.
+
+Review & Export: Reviewed annotations are exported and stored in S3.
+
+Backup: RDS and EC2 volumes are backed up regularly via AWS Backup.
+----------------
+
+
+Compute: EC2 and Auto Scaling Group (ASG)
+EC2 Instances: The CVAT application will run on Amazon EC2 instances. The instance type will be selected based on performance requirements (e.g., t3.medium or m5.large). Instances should be configured using a Launch Template that includes the CVAT application and its dependencies (e.g., Docker/Docker Compose for CVAT deployment).
+
+Auto Scaling Group (ASG): The ASG spans at least two Availability Zones and manages the EC2 instances.
+
+Min/Desired/Max Capacity: Set based on anticipated load (e.g., Min: 2, Desired: 2, Max: 4).
+
+Scaling Policy: A Target Tracking Scaling Policy will be used, targeting metrics like Average CPU Utilization (e.g., scale up if CPU > 60% for 5 minutes).
+
+Health Check: ASG health checks will be configured to use the ALB health check, ensuring only healthy instances receive traffic.
+
+3.2. Load Balancer (ALB)
+Type: Application Load Balancer (ALB) for Layer 7 routing and SSL/TLS termination.
+
+Security: ALB will be deployed in Public Subnets and have a listener configured for HTTPS (port 443), using an AWS Certificate Manager (ACM) certificate. HTTP (port 80) will be redirected to HTTPS.
+
+Target Group: The ALB's target group will point to the EC2 instances in the ASG on the port CVAT runs on (e.g., 8080 or 80).
+
+3.3. Database: PostgreSQL on Amazon RDS
+Service: Amazon Relational Database Service (RDS) for PostgreSQL.
+
+Deployment: Multi-AZ deployment for synchronous data replication and automatic failover to another AZ for high availability.
+
+Storage: Use General Purpose SSD (gp3) storage for a balance of price and performance.
+
+Security: Placed in Private Subnets and accessible only from the EC2 instances via a specific Security Group.
+
+3.4. Storage: S3 Bucket
+Purpose: Primary storage for raw annotation assets (images, videos). CVAT can be configured to access data directly from S3 using its Cloud Storage feature.
+
+Configuration: A dedicated S3 bucket with S3 Standard or S3 Intelligent-Tiering storage class. Server-Side Encryption (SSE-S3) will be enabled by default.
+
+
+
+
+Access Control: Access granted via an IAM Role attached to the EC2 instances (least privilege principle).
+
+4. Backup and Disaster Recovery Strategy
+The backup strategy adheres to the 3-2-1 rule for critical data and includes both database and data assets.
+-------------------------------
+
+Infrastructure Design
+EC2 Instances
+AMI: Ubuntu 22.04 with Docker and CVAT pre-installed
+
+Instance Type: t3.medium (base), scalable to m5.large
+
+Security Groups: Allow HTTP/HTTPS, SSH, and PostgreSQL access from trusted IPs
+
+RDS (PostgreSQL)
+Instance Type: db.t3.medium
+
+Storage: 100 GB SSD with auto-scaling
+
+Backup: Daily snapshots with 7-day retention
+
+Multi-AZ Deployment: Enabled for high availability
+
+S3 Buckets
+cvat-raw-data: Stores raw images/videos
+
+cvat-annotations: Stores exported annotation files
+
+Lifecycle Policies: Archive to Glacier after 90 days
+
+Auto Scaling Group
+Min Instances: 2
+
+Max Instances: 10
+
+Scaling Policy: Triggered by CPU > 70% or memory > 75%
+
+Load Balancer
+Type: Application Load Balancer (ALB)
+
+Routing: HTTP/HTTPS traffic to EC2 instances
+
+Health Checks: Monitors CVAT service endpoints
+
+CloudWatch
+Metrics: CPU, memory, disk I/O, network traffic
+
+Logs: CVAT application logs, Docker logs
+
+Alarms: Trigger alerts for high resource usage or service failure
+
+AWS Backup
+Resources: RDS snapshots, EC2 EBS volumes
+
+Frequency: Daily backups with 7-day retention
+
+Recovery Testing: Monthly restore validation
+
+ Security & Access Control
+IAM Roles: Fine-grained access to S3, RDS, EC2
+
+SSL/TLS: HTTPS enabled via ALB
+
+Authentication: CVAT supports LDAP/OAuth2
+
+Encryption: S3 and RDS encrypted at rest; TLS in transit
+
+Success Metrics
+Annotation throughput (images/day)
+
+Annotation accuracy (QA pass rate)
+
+System uptime and response latency
+
+Backup recovery time and integrity
+
+Cost efficiency (EC2 hours vs. annotation volume)
