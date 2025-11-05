@@ -155,3 +155,39 @@ System uptime and response latency
 Backup recovery time and integrity
 
 Cost efficiency (EC2 hours vs. annotation volume)
+
+---------------------------
+
+import os
+import shutil
+import pandas as pd
+
+# Adjust these paths
+excel_path = r"C:\game-of-life\test\short_images.xlsx"
+sheet_name = "Sheet1"  # or the name of your sheet
+column_name = "ImageName"  # the header column that has your image names
+source_folder = r"C:\game-of-life\test\images"
+target_folder = r"C:\game-of-life\test\latest_images"
+
+# Make sure target folder exists
+os.makedirs(target_folder, exist_ok=True)
+
+# Read the list from Excel
+df = pd.read_excel(excel_path, sheet_name=sheet_name)
+# Remove NaNs, strip whitespace
+filenames_to_copy = df[column_name].dropna().astype(str).str.strip().tolist()
+
+print(f"Will copy {len(filenames_to_copy)} files.")
+
+# Loop through list
+for fname in filenames_to_copy:
+    src_path = os.path.join(source_folder, fname)
+    dst_path = os.path.join(target_folder, fname)
+    if os.path.isfile(src_path):
+        shutil.copy2(src_path, dst_path)  # copy2 preserves metadata, use shutil.copy if you don't need it
+        print(f"Copied: {fname}")
+    else:
+        print(f"WARNING: Source file not found: {src_path}")
+
+print("Done.")
+
