@@ -1,0 +1,182 @@
+
+choose ubuntu based image to start ec2
+---------------------------------------------
+EC2 has been sassigned with s3FullAccess role. run below command in  ec2
+---------------------------------------------
+
+sudo apt-get update && sudo apt-get install docker.io -y && sudo systemctl start docker && sudo systemctl enable docker
+
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+
+sudo chmod +x /usr/local/bin/docker-compose && git clone https://github.com/opencv/cvat
+
+cd cvat
+
+
+export CVAT_HOST=15.206.172.64   <-- this should be public ip of ec2. replace it with correct value
+sudo docker-compose up -d
+sudo docker exec -it cvat_server bash
+python3 manage.py createsuperuser
+
+
+
+
+
+# in local computer you can do portforwarding to map port and nevigate in local browser with http://localhost:8080/auth/login to see cvat login
+# prvate key is ec2 private key
+ssh -i "C:\Users\Ashish Jha\Downloads\private_key.pem" -L 8080:localhost:8080 ubuntu@15.206.172.64
+
+
+
+#run following command in ec2
+-------------------------to install fuse ------------------
+sudo apt update && sudo apt install s3fs -y
+
+# Make a directory to mount
+sudo mkdir -p /mnt/share && sudo mkdir -p /mnt/share/data && sudo mkdir -p /mnt/share/logs
+
+# Mount S3 bucket (replace with your bucket)
+
+-
+-
+- 
+export ACCESS_KEY_ID=<your ACCESS_KEY_ID>
+export SECRET_ACCESS_KEY=<your SECRET_ACCESS_KEY>
+
+echo ${ACCESS_KEY_ID}:${SECRET_ACCESS_KEY} > ${HOME}/.passwd-s3fs
+chmod 600 ${HOME}/.passwd-s3fs
+
+
+-----------------------------
+<!-- sudo s3fs cvat-ash1 /mnt/share -o allow_other -o passwd_file=${HOME}/.passwd-s3fs -->
+
+--------------
+Uncomment user_allow_other in the /etc/fuse.conf file: sudo vim /etc/fuse.conf
+---------------
+
+
+------------- running below command will continue showing outputs and you won't be able to use that terminal. you will hae to keep it open and start new terminal ---------------------------
+
+sudo s3fs cvat-ash1 /mnt/share   -o passwd_file=${HOME}/.passwd-s3fs   -o url=https://s3-ap-south-1.amazonaws.com   -o endpoint=ap-south-1   -o use_path_request_style   -o allow_other   -o dbglevel=info -f -o curldbg -o nonempty
+--
+
+
+NOW in seperate terminal in ec2 CHECK whether below command gives any output  or not:
+--------------
+cat /etc/mtab | grep 's3fs'
+----------------
+
+
+vim docker-compose.override.yml
+--------------------
+services:
+  cvat_server:
+    volumes:
+      - cvat_share:/home/django/share:ro
+      - cvat_data:/home/django/data
+      - cvat_logs:/home/django/logs
+  cvat_worker_import:
+    volumes:
+      - cvat_share:/home/django/share:ro
+      - cvat_data:/home/django/data
+  cvat_worker_export:
+    volumes:
+      - cvat_share:/home/django/share:ro
+      - cvat_data:/home/django/data
+  cvat_worker_annotation:
+    volumes:
+      - cvat_share:/home/django/share:ro
+      - cvat_data:/home/django/data
+  cvat_worker_chunks:
+    volumes:
+      - cvat_share:/home/django/share:ro
+      - cvat_data:/home/django/data
+
+
+volumes:
+  cvat_share:
+    driver_opts:
+      type: none
+      device: /mnt/share
+      o: bind
+  cvat_data:
+    driver_opts:
+      type: none
+      device: /mnt/share/data   
+      o: bind
+  cvat_logs:
+    driver_opts:
+      type: none
+      device: /mnt/share/logs  
+      o: bind
+
+
+
+
+
+<!-- export CVAT_POSTGRES_HOST= database-1.crugsueky0g1.ap-south-1.rds.amazonaws.com
+export CVAT_POSTGRES_PORT= 5432
+export CVAT_POSTGRES_DBNAME= postgres
+export CVAT_POSTGRES_USER= postgres
+export CVAT_POSTGRES_PASSWORD=ashish123 -->
+
+
+
+------- to test connection from ec2 to database run below command in ec2---------
+from cnsole you can connect db to ec2 in connected compute resources 
+--------------------------
+
+sudo apt update && sudo apt install postgresql-client -y
+
+psql -h database-1.crugsueky0g1.ap-south-1.rds.amazonaws.com \
+     -U postgres \
+     -d postgres
+
+
+
+
+--- create new docker-compose.external_db.yml
+-----------------------------------------------
+
+x-backend-settings: &backend-settings
+  environment:
+    CVAT_POSTGRES_HOST: database-1.crugsueky0g1.ap-south-1.rds.amazonaws.com
+    CVAT_POSTGRES_PORT: 5432
+    CVAT_POSTGRES_DBNAME: postgres
+    CVAT_POSTGRES_USER: postgres
+    CVAT_POSTGRES_PASSWORD: ashish123
+
+services:
+  cvat_db:
+    deploy:
+      replicas: 0
+
+  cvat_server: *backend-settings
+  cvat_worker_utils: *backend-settings
+  cvat_worker_annotation: *backend-settings
+  cvat_worker_export: *backend-settings
+  cvat_worker_import: *backend-settings
+  cvat_worker_quality_reports: *backend-settings
+  cvat_worker_webhooks: *backend-settings
+  cvat_worker_chunks: *backend-settings
+  cvat_worker_consensus: *backend-settings
+
+secrets:
+  postgres_password:
+    environment: CVAT_POSTGRES_PASSWORD
+
+
+
+
+
+--------------------
+
+---- after that run below command to start docker------
+
+sudo docker-compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.external_db.yml up -d
+
+
+
+
+
+
