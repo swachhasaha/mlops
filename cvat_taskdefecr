@@ -1,0 +1,192 @@
+{
+  "family": "cvat-core",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "4096",
+  "memory": "8192",
+  "executionRoleArn": "arn:aws:iam::<account-id>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<account-id>:role/cvatTaskRole",
+  "volumes": [
+    {
+      "name": "cvat_app_data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-xxxxxxxxxxxxxxxxx",
+        "rootDirectory": "/cvat/app",
+        "transitEncryption": "ENABLED",
+        "authorizationConfig": {
+          "iam": "DISABLED"
+        }
+      }
+    },
+    {
+      "name": "cvat_db_data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-xxxxxxxxxxxxxxxxx",
+        "rootDirectory": "/cvat/db",
+        "transitEncryption": "ENABLED",
+        "authorizationConfig": {
+          "iam": "DISABLED"
+        }
+      }
+    },
+    {
+      "name": "cvat_redis_data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-xxxxxxxxxxxxxxxxx",
+        "rootDirectory": "/cvat/redis",
+        "transitEncryption": "ENABLED",
+        "authorizationConfig": {
+          "iam": "DISABLED"
+        }
+      }
+    }
+  ],
+  "containerDefinitions": [
+    {
+      "name": "cvat_db",
+      "image": "docker.io/library/postgres:15-alpine",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5432,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "POSTGRES_DB", "value": "cvat"},
+        {"name": "POSTGRES_USER", "value": "cvat"}
+      ],
+      "secrets": [
+        {
+          "name": "POSTGRES_PASSWORD",
+          "valueFrom": "arn:aws:ssm:<region>:<account-id>:parameter/cvat/postgres/password"
+        }
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "cvat_db_data",
+          "containerPath": "/var/lib/postgresql/data"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/cvat/postgres",
+          "awslogs-region": "<region>",
+          "awslogs-stream-prefix": "postgres"
+        }
+      }
+    },
+    {
+      "name": "cvat_redis",
+      "image": "docker.io/library/redis:7",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 6379,
+          "protocol": "tcp"
+        }
+      ],
+      "command": [
+        "redis-server",
+        "--save",
+        "60",
+        "100",
+        "--appendonly",
+        "yes"
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "cvat_redis_data",
+          "containerPath": "/data"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/cvat/redis",
+          "awslogs-region": "<region>",
+          "awslogs-stream-prefix": "redis"
+        }
+      }
+    },
+    {
+      "name": "cvat_server",
+      "image": "docker.io/cvat/server:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {"name": "ALLOWED_HOSTS", "value": "*"},
+        {"name": "CVAT_POSTGRES_HOST", "value": "cvat_db"},
+        {"name": "CVAT_POSTGRES_PORT", "value": "5432"},
+        {"name": "CVAT_REDIS_INMEM_HOST", "value": "cvat_redis"},
+        {"name": "CVAT_REDIS_INMEM_PORT", "value": "6379"},
+        {"name": "CVAT_LOG_IMPORT_ERRORS", "value": "true"},
+        {"name": "NUMPROCS", "value": "2"},
+        {"name": "CVAT_BASE_URL", "value": ""}
+      ],
+      "secrets": [
+        {
+          "name": "POSTGRES_PASSWORD",
+          "valueFrom": "arn:aws:ssm:<region>:<account-id>:parameter/cvat/postgres/password"
+        }
+      ],
+      "dependsOn": [
+        {"containerName": "cvat_db", "condition": "START"},
+        {"containerName": "cvat_redis", "condition": "START"}
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "cvat_app_data",
+          "containerPath": "/home/django/data"
+        },
+        {
+          "sourceVolume": "cvat_app_data",
+          "containerPath": "/home/django/keys"
+        },
+        {
+          "sourceVolume": "cvat_app_data",
+          "containerPath": "/home/django/logs"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/cvat/server",
+          "awslogs-region": "<region>",
+          "awslogs-stream-prefix": "server"
+        }
+      }
+    },
+    {
+      "name": "cvat_ui",
+      "image": "docker.io/cvat/ui:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "dependsOn": [
+        {"containerName": "cvat_server", "condition": "START"}
+      ],
+      "environment": [
+        {"name": "REACT_APP_API_URL", "value": "http://localhost:8080"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/cvat/ui",
+          "awslogs-region": "<region>",
+          "awslogs-stream-prefix": "ui"
+        }
+      }
+    }
+  ]
+}
