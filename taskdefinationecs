@@ -1,0 +1,192 @@
+{
+    "family": "cvat-task",
+    "containerDefinitions": [
+        {
+            "command": [
+                "run server"
+            ],
+            "cpu": 0,
+            "environment": [
+                {
+                    "name": "REDIS_HOST",
+                    "value": "127.0.0.1"
+                },
+                {
+                    "name": "REDIS_PORT",
+                    "value": "6379"
+                },
+                {
+                    "name": "DB_PORT",
+                    "value": "5432"
+                },
+                {
+                    "name": "DB_USER",
+                    "value": "cvat"
+                },
+                {
+                    "name": "ALLOWED_HOSTS",
+                    "value": "*"
+                },
+                {
+                    "name": "DB_NAME",
+                    "value": "cvat"
+                },
+                {
+                    "name": "DB_HOST",
+                    "value": "cvat"
+                },
+                {
+                    "name": "DB_PASSWORD",
+                    "value": "cvat12345"
+                }
+            ],
+            "essential": true,
+            "image": "cvat/server:latest",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cvat-task",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                },
+                "secretOptions": []
+            },
+            "mountPoints": [
+                {
+                    "containerPath": "/home/django/data",
+                    "readOnly": false,
+                    "sourceVolume": "cvat-data"
+                }
+            ],
+            "name": "cvat-server",
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "name": "cvat-server-8080-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "systemControls": [],
+            "volumesFrom": []
+        },
+        {
+            "cpu": 0,
+            "environment": [
+                {
+                    "name": "CVAT_SERVER_URL",
+                    "value": "http://127.0.0.1:8080"
+                },
+                {
+                    "name": "ALLOWED_HOSTS",
+                    "value": "*"
+                }
+            ],
+            "essential": true,
+            "image": "cvat/ui:latest",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cvat-task",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                },
+                "secretOptions": []
+            },
+            "mountPoints": [
+                {
+                    "containerPath": "/home/django/data",
+                    "readOnly": false,
+                    "sourceVolume": "cvat-data"
+                }
+            ],
+            "name": "cvat-ui",
+            "portMappings": [
+                {
+                    "containerPort": 80,
+                    "hostPort": 80,
+                    "name": "cvat-ui-80-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "systemControls": [],
+            "volumesFrom": []
+        },
+        {
+            "command": [
+                "redis-server",
+                "--appendonly",
+                "yes"
+            ],
+            "cpu": 0,
+            "environment": [],
+            "essential": true,
+            "image": "redis:7",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cvat-task",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                },
+                "secretOptions": []
+            },
+            "mountPoints": [
+                {
+                    "containerPath": "/data",
+                    "readOnly": false,
+                    "sourceVolume": "redis-data"
+                }
+            ],
+            "name": "redis",
+            "portMappings": [
+                {
+                    "containerPort": 6379,
+                    "hostPort": 6379,
+                    "name": "redis-6379-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "systemControls": [],
+            "volumesFrom": []
+        }
+    ],
+    "taskRoleArn": "arn:aws:iam::157298730309:role/ecr_ecs_access",
+    "executionRoleArn": "arn:aws:iam::157298730309:role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "volumes": [
+        {
+            "efsVolumeConfiguration": {
+                "authorizationConfig": {
+                    "accessPointId": "fsap-03e4f4cc86dda4314",
+                    "iam": "ENABLED"
+                },
+                "fileSystemId": "fs-0c6514df13d53a3fc",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "cvat-data"
+        },
+        {
+            "efsVolumeConfiguration": {
+                "authorizationConfig": {
+                    "accessPointId": "fsap-0f6661c878269ffac",
+                    "iam": "ENABLED"
+                },
+                "fileSystemId": "fs-0c6514df13d53a3fc",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "redis-data"
+        }
+    ],
+    "placementConstraints": [],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "1024",
+    "memory": "2048"
+}
