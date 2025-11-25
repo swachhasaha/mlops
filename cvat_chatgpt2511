@@ -1,0 +1,258 @@
+{
+    "family": "cvat-core",
+    "containerDefinitions": [
+        {
+            "cpu": 0,
+            "environment": [
+                {
+                    "name": "POSTGRES_USER",
+                    "value": "cvat"
+                },
+                {
+                    "name": "POSTGRES_PASSWORD",
+                    "value": "cvat12345"
+                },
+                {
+                    "name": "POSTGRES_DB",
+                    "value": "cvat"
+                }
+            ],
+            "essential": true,
+            "image": "docker.io/library/postgres:15-alpine",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cvat-core",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "mountPoints": [
+                {
+                    "containerPath": "/var/lib/postgresql/data",
+                    "sourceVolume": "cvat_db_data"
+                }
+            ],
+            "name": "cvat_db",
+            "portMappings": [
+                {
+                    "containerPort": 5432,
+                    "hostPort": 5432,
+                    "name": "cvat_db-5432-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "systemControls": [],
+            "volumesFrom": []
+        },
+        {
+            "command": [
+                "redis-server",
+                "--save",
+                "60",
+                "100",
+                "--appendonly",
+                "yes"
+            ],
+            "cpu": 0,
+            "environment": [],
+            "essential": true,
+            "image": "docker.io/library/redis:7",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cvat-core",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "mountPoints": [
+                {
+                    "containerPath": "/data",
+                    "sourceVolume": "cvat_redis_data"
+                }
+            ],
+            "name": "cvat_redis",
+            "portMappings": [
+                {
+                    "containerPort": 6379,
+                    "hostPort": 6379,
+                    "name": "cvat_redis-6379-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "systemControls": [],
+            "volumesFrom": []
+        },
+        {
+            "cpu": 0,
+            "dependsOn": [
+                {
+                    "condition": "START",
+                    "containerName": "cvat_db"
+                },
+                {
+                    "condition": "START",
+                    "containerName": "cvat_redis"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "no_proxy",
+                    "value": "vector"
+                },
+                {
+                    "name": "CVAT_LOG_IMPORT_ERRORS",
+                    "value": "true"
+                },
+                {
+                    "name": "CVAT_REDIS_INMEM_HOST",
+                    "value": "127.0.0.1"
+                },
+                {
+                    "name": "ALLOWED_HOSTS",
+                    "value": "*"
+                },
+                {
+                    "name": "DJANGO_LOG_SERVER_HOST",
+                    "value": "vector"
+                },
+                {
+                    "name": "NUMPROCS",
+                    "value": "2"
+                },
+                {
+                    "name": "POSTGRES_PASSWORD",
+                    "value": "cvat12345"
+                },
+                {
+                    "name": "CVAT_POSTGRES_HOST",
+                    "value": "127.0.0.1"
+                },
+                {
+                    "name": "DJANGO_LOG_SERVER_PORT",
+                    "value": "8282"
+                },
+                {
+                    "name": "CVAT_POSTGRES_PORT",
+                    "value": "5432"
+                },
+                {
+                    "name": "CVAT_REDIS_INMEM_PORT",
+                    "value": "6379"
+                }
+            ],
+            "essential": true,
+            "image": "docker.io/cvat/server:latest",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cvat-core",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "mountPoints": [
+                {
+                    "containerPath": "/home/django/data",
+                    "sourceVolume": "cvat_app_data"
+                },
+                {
+                    "containerPath": "/home/django/keys",
+                    "sourceVolume": "cvat_app_data"
+                },
+                {
+                    "containerPath": "/home/django/logs",
+                    "sourceVolume": "cvat_app_data"
+                }
+            ],
+            "name": "cvat_server",
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "name": "cvat_server-8080-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "systemControls": [],
+            "volumesFrom": []
+        },
+        {
+            "cpu": 0,
+            "dependsOn": [
+                {
+                    "condition": "START",
+                    "containerName": "cvat_server"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "REACT_APP_API_URL",
+                    "value": "http://127.0.0.1:8080"
+                }
+            ],
+            "essential": true,
+            "image": "docker.io/cvat/ui:latest",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cvat-core",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "mountPoints": [],
+            "name": "cvat_ui",
+            "portMappings": [
+                {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "name": "cvat_ui-8000-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "systemControls": [],
+            "volumesFrom": []
+        }
+    ],
+    "taskRoleArn": "arn:aws:iam::157298730309:role/ecr_ecs_access",
+    "executionRoleArn": "arn:aws:iam::157298730309:role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "volumes": [
+        {
+            "efsVolumeConfiguration": {
+                "fileSystemId": "fs-06353e8f6a16c3518",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "cvat_app_data"
+        },
+        {
+            "efsVolumeConfiguration": {
+                "fileSystemId": "fs-016aeae7802490578",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "cvat_db_data"
+        },
+        {
+            "efsVolumeConfiguration": {
+                "fileSystemId": "fs-045054481f08e4ff8",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "cvat_redis_data"
+        }
+    ],
+    "placementConstraints": [],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "4096",
+    "memory": "8192"
+}
