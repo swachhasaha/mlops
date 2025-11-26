@@ -1,0 +1,304 @@
+{
+    "family": "CVAT_TASK_NEW",
+    "containerDefinitions": [
+        {
+            "command": [
+                "redis-server",
+                "--save",
+                "60",
+                "100",
+                "--appendonly",
+                "yes"
+            ],
+            "cpu": 0,
+            "environment": [],
+            "essential": true,
+            "image": "redis:7.2.11-alpine",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/CVAT_TASK_NEW",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "mountPoints": [
+                {
+                    "containerPath": "/data",
+                    "readOnly": false,
+                    "sourceVolume": "cvat_inmem_db"
+                }
+            ],
+            "name": "cvat_redis_inmem",
+            "portMappings": [
+                {
+                    "appProtocol": "http",
+                    "containerPort": 6379,
+                    "hostPort": 6379,
+                    "name": "cvat_redis_inmem-6379-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "restartPolicy": {
+                "enabled": true,
+                "restartAttemptPeriod": 60
+            },
+            "systemControls": [],
+            "volumesFrom": []
+        },
+        {
+            "cpu": 0,
+            "environment": [
+                {
+                    "name": "POSTGRES_USER",
+                    "value": "root"
+                },
+                {
+                    "name": "POSTGRES_PASSWORD",
+                    "value": "swachha12345"
+                },
+                {
+                    "name": "POSTGRES_DB",
+                    "value": "cvat"
+                }
+            ],
+            "essential": false,
+            "image": "postgres:15-alpine",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/CVAT_TASK_NEW",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "mountPoints": [],
+            "name": "cvat_db",
+            "portMappings": [],
+            "restartPolicy": {
+                "enabled": true,
+                "restartAttemptPeriod": 60
+            },
+            "systemControls": [],
+            "volumesFrom": []
+        },
+        {
+            "command": [
+                "init",
+                "run",
+                "server"
+            ],
+            "cpu": 0,
+            "dependsOn": [
+                {
+                    "condition": "START",
+                    "containerName": "cvat_redis_inmem"
+                },
+                {
+                    "condition": "START",
+                    "containerName": "cvat_db"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "POSTGRES_USER",
+                    "value": "root"
+                },
+                {
+                    "name": "CVAT_REDIS_INMEM_HOST",
+                    "value": "cvat_redis_inmem"
+                },
+                {
+                    "name": "ALLOWED_HOSTS",
+                    "value": "*"
+                },
+                {
+                    "name": "DJANGO_LOG_SERVER_HOST",
+                    "value": "vector"
+                },
+                {
+                    "name": "CVAT_ANALYTICS",
+                    "value": "0"
+                },
+                {
+                    "name": "POSTGRES_PASSWORD",
+                    "value": "swachha12345"
+                },
+                {
+                    "name": "CVAT_POSTGRES_HOST",
+                    "value": "cvat_db"
+                },
+                {
+                    "name": "DJANGO_LOG_SERVER_PORT",
+                    "value": "8282"
+                },
+                {
+                    "name": "POSTGRES_DB",
+                    "value": "cvat"
+                },
+                {
+                    "name": "CVAT_REDIS_INMEM_PORT",
+                    "value": "6379"
+                },
+                {
+                    "name": "CVAT_REDIS_ONDISK_HOST",
+                    "value": ""
+                },
+                {
+                    "name": "DJANGO_MODWSGI_EXTRA_ARGS",
+                    "value": "''"
+                }
+            ],
+            "essential": true,
+            "image": "cvat/server:dev",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/CVAT_TASK_NEW",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "mountPoints": [
+                {
+                    "containerPath": "/home/django/data",
+                    "readOnly": false,
+                    "sourceVolume": "cvat_data"
+                },
+                {
+                    "containerPath": "/home/django/keys",
+                    "readOnly": false,
+                    "sourceVolume": "cvat_keys"
+                },
+                {
+                    "containerPath": "/home/django/logs",
+                    "readOnly": false,
+                    "sourceVolume": "cvat_logs"
+                }
+            ],
+            "name": "cvat-server",
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "name": "cvat-server-8080-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "restartPolicy": {
+                "enabled": true,
+                "restartAttemptPeriod": 60
+            },
+            "systemControls": [],
+            "volumesFrom": []
+        },
+        {
+            "cpu": 0,
+            "dependsOn": [
+                {
+                    "condition": "START",
+                    "containerName": "cvat-server"
+                }
+            ],
+            "environment": [],
+            "essential": false,
+            "image": "cvat/ui:dev",
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/CVAT_TASK_NEW",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "mountPoints": [],
+            "name": "cvat_ui",
+            "portMappings": [
+                {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "name": "cvat_ui-8000-tcp",
+                    "protocol": "tcp"
+                }
+            ],
+            "restartPolicy": {
+                "enabled": true,
+                "restartAttemptPeriod": 60
+            },
+            "systemControls": [],
+            "volumesFrom": []
+        }
+    ],
+    "taskRoleArn": "arn:aws:iam::157298730309:role/ecr_ecs_access",
+    "executionRoleArn": "arn:aws:iam::157298730309:role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "volumes": [
+        {
+            "host": {},
+            "name": "cvat_inmem_db"
+        },
+        {
+            "efsVolumeConfiguration": {
+                "authorizationConfig": {
+                    "accessPointId": "fsap-02844bdea2b84871b",
+                    "iam": "DISABLED"
+                },
+                "fileSystemId": "fs-0bcd0d0808779c1a4",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "cvat_db"
+        },
+        {
+            "efsVolumeConfiguration": {
+                "authorizationConfig": {
+                    "accessPointId": "fsap-0ca003b57d8adc095",
+                    "iam": "DISABLED"
+                },
+                "fileSystemId": "fs-0bcd0d0808779c1a4",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "cvat_data"
+        },
+        {
+            "efsVolumeConfiguration": {
+                "authorizationConfig": {
+                    "accessPointId": "fsap-079387b1a72b03966",
+                    "iam": "DISABLED"
+                },
+                "fileSystemId": "fs-0bcd0d0808779c1a4",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "cvat_keys"
+        },
+        {
+            "efsVolumeConfiguration": {
+                "authorizationConfig": {
+                    "accessPointId": "fsap-05ea7e6952c11db0c",
+                    "iam": "DISABLED"
+                },
+                "fileSystemId": "fs-0bcd0d0808779c1a4",
+                "rootDirectory": "/",
+                "transitEncryption": "ENABLED"
+            },
+            "name": "cvat_logs"
+        }
+    ],
+    "placementConstraints": [],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "1024",
+    "memory": "3072",
+    "runtimePlatform": {
+        "cpuArchitecture": "X86_64",
+        "operatingSystemFamily": "LINUX"
+    },
+    "enableFaultInjection": false
+}
