@@ -1,0 +1,400 @@
+1) Development Account
+1.1) Summary
+The Development environment enables fast experimentation and repeatable training workflows for vision-based ML models using SageMaker, MLflow, GitHub, ECR, and S3. 
+
+Develop models using SageMaker Studio notebooks with user profiles for isolation
+Commit code and pipeline definitions to GitHub.
+Use Github actions for CI/CD
+S3 as the storage and data versioning tool for training and evaluation data.
+Build and manage Docker images for training / inference jobs in ECR.
+Execute training pipelines in SageMaker with hyperparameter tuning and experiment tracking via MLFlow.
+Track system, model, evaluation metrics.
+Execute inference pipelines with Lambda based triggers.
+Securely store and use secrets
+Not in scope: AWS Private link and Gateways for S3, ECR, Lambda etc for integration with Sagemaker, Git
+
+1.2) Business Architecture
+Objectives
+Provide a unified development workflow centered around SageMaker
+
+Ensure all model training code, training/inference pipelines, and container specs are version-controlled
+
+Enable reproducible ML experimentation and training via MLflow and SageMaker Pipelines
+
+Automate model quality checks and drift detection
+
+Key Stakeholders
+Data Scientists
+
+ML Engineers
+
+Cloud Engineering
+
+Architecture & Governance Team
+
+Business Process
+All model experimentation, training, and test inference occurs in the Development account
+Notebook-driven and IDE-driven model development
+
+Version-controlled code and container builds
+
+ML training/inference pipelines
+
+Experiment tracking and drift analysis (with evaluation metrics)
+
+Model registration
+
+1.3) Information Architecture
+Data Storage
+Data copied from Production to Development. No further requirements were provided.
+
+Training and evaluation datasets are stored in Amazon S3, partitioned by:
+
+<TO BE FILLED BY ZAC/VANDIT>
+<TO BE FILLED BY ZAC/VANDIT>
+Governance
+Access managed through IAM roles.
+
+Dataset version control will be enforced by naming standards
+
+Dataset versioning alternate option
+
+DVC	S3 implicit dataset versioning sufficient for this use case at this time	
+20 Nov 2025 
+
+ZS	Could be added in later phase
+Metadata and Experiment tracking
+MLflow is used to record:
+
+training parameters
+
+evaluation metrics
+
+confusion matrices
+
+drift metrics (if it can be instrumented)
+
+model artifacts
+
+model versions in the MLflow Registry
+
+1.4) Application & ML Architecture
+Development Workflow
+Developer writes or updates model code in Studio or local IDE.
+
+Developer commits & pushes all changes to GitHub.
+
+GitHub Actions automatically builds/pushes training images to ECR, tagged by commit SHA, does security scans (Aqua scan)
+
+Github actions manually triggers SageMaker Pipeline runs the training/retraining workflow.
+
+EventBridge and Lambda based triggers for SageMaker inference pipeline.
+MLflow logs experiment metrics, artifacts, and eval metrics.
+
+If evaluation thresholds are met, model is registered in MLflow Registry.
+
+Training pipeline components
+A typical Sagemaker training pipeline includes:
+
+Preprocessing step
+
+Training or Hyperparameter Tuning (HPO) job
+
+Evaluation step (to MLFLow)
+
+Model registration step (to MLFlow)
+
+How to trigger pipeline
+
+GitHub actions will trigger the pipeline commited to Git and use images from ECR (training job steps)
+
+Inference pipeline components
+Preprocessing (Frame Extractor)
+Inputs:
+360 degree videos
+Scan metadata (rosbag and JSON)
+Outputs:
+360 degree images at set locations within the blade marked with blade location metadata
+2D snapshots sampled at key locations for AI models marked with blade location metadata
+Model Inferencing (18 models)
+Inputs:
+2D snapshots
+Blade location metadata for each 2D snapshot
+Outputs
+JSON containing list of all snapshots and any indications corresponding to each snapshot 
+Aggregator
+Inputs:
+Preprocessing outputs
+
+
+Airflow	Large transition effort for no performance increase	
+20 Nov 2025 
+
+ZS	Could be used in later phase
+CI/CD - Github
+Workflows
+GitHub Actions workflows can:
+
+Build training Docker image
+
+Push image to ECR
+
+Security scan
+Code coverage and formatting
+Validate pipeline structure (linting, unit tests)
+
+Trigger SageMaker Pipeline execution manually or automatically
+
+Branching and Release Strategy
+Recommended:
+
+main - stable code, minimum two approvals required to commit a branch to main.
+feature branches - developer experimentations
+After every release main branch should be tagged with release version.
+git commit tag to be used in model versioning for tracability.
+1.5) Technology Architecture
+Core components
+
+SVC and CI/CD	Github / Github Actions	Training code, Sage maker pipeline code, Sagemaker training jobs code  
+Training Pipeline	Sagemaker pipeline	We can use hyperparameter tuning from Sagemaker
+Development	Sagemaker notebooks / IDE	
+Metrics	Cloudwatch + MLFlow	
+Model registry / Experiment tracking	MLFlow	
+Data storage and versioning	S3 / date based versioning	
+Container registry	ECR	
+Inference pipeline	Event Bridge + Lambda + Sagemaker pipeline + RDS	For testing inference pipeline in dev, we can simulate S3 data upload which then will trigger Event bridge → Lambda → SageMaker pipeline → Store metadata in RDS.
+Secrets	SSM parameter or AWS Secrets Manager	
+Identity management	IAM	
+Encryption	KMS	
+
+
+1.6) Governance
+Refer Governance in production : 2.6)Governance
+
+1.7) Operational Architecture – DEV
+Monitoring
+MLflow UI for confusion matrix and run comparison
+
+CloudWatch for job logs and resource usage
+
+Optional NewRelic integration for GPU/application metrics
+
+Incident Handling
+Relevant in production not in dev
+
+1.8) Non-Functional Requirements
+Flexible experimentation
+
+Easy reproducibility
+
+Model quality assurance (model metrics)
+
+
+
+2) Staging / Production Account
+2.1) Summary
+The Production environment enables secure, governed deployment and operation of approved vision-based ML models using SageMaker, MLflow, GitHub Actions, ECR, S3, and CVAT. The environment is optimized for stability, auditability, and automated deployment of validated model versions.
+
+Deploy approved model versions and pipelines using GitHub Actions-based CI/CD
+Separate VPCs for model retraining and model inference workloads
+Data is uploaded from factory to input S3 folder
+Manage Docker images for training/inference jobs in ECR with strict governance
+Retraining pipeline does NOT auto-deploy to production in this version
+Execute inference pipelines in separate VPC with event-driven triggers based on data upload from factory
+CVAT annotation tool deployed on ECS for annotators to annotate data which will be used for retraining
+Restricted data scientist access limited to MLflow metrics, CloudWatch metrics, and CloudWatch logs
+Securely store and use secrets
+Not in scope
+
+AWS Private link and Gateways for S3, ECR, Lambda etc for integration with SageMaker
+Data copy architecture as it's a CTO ticket-based process.
+2.2) Business Architecture
+Objectives
+Provide a secure, governed production workflow for deploying and operating approved ML models
+Ensure all deployed models, pipelines, and containers are version-controlled and approved
+Enable automated deployment of approved model versions via GitHub Actions
+Separate retraining from production deployment to maintain control and governance
+Provide monitoring and observability for data scientists without production access
+Key Stakeholders
+Data Scientists
+
+ML Engineers
+
+Cloud Engineering
+
+Architecture & Governance Team
+
+Business Process
+No experimentation occurs in the Production account
+Approved model versions and pipeline code are deployed via GitHub Actions
+Model retraining pipeline executes in dedicated retraining VPC
+Retraining pipeline does NOT automatically deploy models to production inference
+Model inference operates in separate dedicated inference VPC
+Annotators access CVAT through ALB with Active Directory MFA (Ping)
+Data scientists monitor via MLflow metrics, CloudWatch metrics, and CloudWatch logs only
+All deployments require explicit approval workflow (Governance)
+2.3) Information Architecture
+Data Storage
+Data uploaded to Amazon S3 from factory, partitioned and versioned by:
+
+<TO BE FILLED BY ZAC/VANDIT>
+<TO BE FILLED BY ZAC/VANDIT>
+Data genrated from inference pipeline, partitioned and versioned by
+
+<TO BE FILLED BY ZAC/VANDIT>
+<TO BE FILLED BY ZAC/VANDIT>
+Data annotated by Annotators or QA, partitioned and versioned by
+
+<TO BE FILLED BY ZAC/VANDIT>
+<TO BE FILLED BY ZAC/VANDIT>
+Data access patterns
+
+Inference pipeline: read access to factory upload bucket.
+Inference pipeline: write access to inference output bucket
+CVAT: read access to inference output bucket
+CVAT: write access to annotated data bucket
+Retraining pipeline: read access from annotated data buckets
+Governance
+Access managed through IAM roles.
+
+Dataset version control will be enforced by naming standards
+
+Dataset versioning alternate option
+
+DVC	<TO BE FILLED BY ZAC>	
+
+Metadata and Experiment tracking
+Deployed model metadata and dataset versioning
+Production inference metrics
+Model evaluation metrics
+Model versions in MLflow Registry (production-approved only)
+2.4) Application & ML Architecture
+Production Deployment Workflow
+Approved model version and pipeline code committed to protected GitHub branch (tagged with release version)
+GitHub Actions automatically:
+Copies training and inference images from dev ECR to production ECR 
+Copies approved model from dev MLFlow registry to prod MLFlow registry (<TODO discuss> or other option is to run training pipeline with same data in prod)
+Upon approval, GitHub Actions deploys:
+Model retraining pipeline to retraining VPC
+Model inference pipeline to inference VPC
+Updates to CVAT configuration (if applicable)
+Deployed pipelines execute in their respective VPCs
+MLflow logs all production metrics (read-only for data scientists)
+CloudWatch captures all operational logs and metrics.
+Model Retraining Pipeline 
+Key Principle: Retraining pipeline does NOT deploy models to production inference
+
+A typical SageMaker retraining pipeline includes:
+
+Run with fixed hyper parameter
+Evaluation step (metrics logged to MLflow)
+Model registration step (to MLflow as "candidate" or "retrained" model)
+Manual approval required before model can be promoted to production inference
+Pipeline Trigger:
+
+Scheduled (e.g., new data arrival) via EventBridge
+Manual trigger via GitHub Actions
+VPC Configuration:
+
+Isolated retraining VPC with private subnets
+Security groups restricting traffic
+Flow logs enabled
+Model Inference Pipeline 
+Production inference components:
+
+EventBridge rules for inference triggers
+Lambda functions for orchestration
+RDS for metadata and inference logging
+S3 for input/output data
+Pipeline Trigger:
+
+Event-driven via EventBridge (e.g., S3 data upload from factory)
+VPC Configuration:
+
+Isolated inference VPC with private subnets
+Security groups restricting traffic
+Flow logs enabled
+CVAT Annotation Tool
+Architecture:
+
+Deployed as ECS service (Fargate or EC2)
+Application Load Balancer (ALB) for external access
+ALB integrated with Active Directory for authentication
+Multi-Factor Authentication (MFA - Ping)
+CVAT backend connects to S3 for data storage
+CVAT database (Aurora/RDS) for annotation metadata
+Access Control:
+
+Annotators authenticate via Active Directory + MFA through ALB
+Role-based access control (RBAC) within CVAT
+Audit logging of all annotation activities
+Network isolation via security groups
+ECS Configuration:
+
+Private subnets for ECS tasks
+ALB in public subnets with security groups
+CI/CD - Github
+Workflows
+GitHub Actions workflows for production:
+
+Copy training and inference Docker images from dev ECR (which are approved for production)
+Validate pipeline structure and configurations before deployment
+Manual approval gates for production deployment
+Deploy approved model retraining pipeline to retraining VPC
+Deploy approved model inference pipeline to inference VPC
+Update CVAT configurations if needed
+Branching and Release Strategy
+Covered in Dev
+
+2.5) Technology Architecture
+2.6) Governance
+Data Governance
+Access Control: Data scientists have read-only monitoring access, no direct data access
+Compliance: <TO BE FILLED BY ZAC - specific compliance requirements>
+Model Approval
+Who approves a model?
+Business stakeholder approval, Model Architect, Security approval
+Approval criteria:
+Model performance meets defined thresholds
+Model evaluation metrics reviewed and acceptable
+Rollback plan documented
+Code/Pipeline Release Approval
+Who approves code/pipeline release for production?
+Minimum two peer reviews from ML Engineers/MLOps
+Architecture review for infrastructure changes
+Security approval for new dependencies or permissions
+Approval gates in GitHub Actions:
+Automated tests must pass
+Security scans must pass (no critical/high vulnerabilities)
+Manual approval required before production deployment
+ECR Image Approval
+Who approves ECR images for production?
+Security team review of scan results
+Image requirements:
+Pass Aqua security scan (no critical/high vulnerabilities)
+Immutable tags linked to Git commit SHA
+Base images from approved registry only
+Resource Restrictions
+Instance type restrictions:
+Approved instance types defined per workload (retraining vs inference)
+Cost optimization through instance type governance
+Auto-approval for standard instance types, manual approval for expensive instances
+Resource tagging:
+Enforce tagging on all resources: Environment, CostCenter, Owner, Project, Workload
+Tag compliance monitoring via AWS Config
+Automated remediation for untagged resources (alert + potential shutdown)
+Additional Governance Controls
+Retraining does not auto-deploy: Manual approval gate prevents automatic production deployment
+Audit logging: All actions logged to CloudTrail and reviewed regularly
+Change management: All production changes follow defined change management process
+Disaster recovery: RPO/RTO defined, backup/restore procedures tested regularly (NOT IN SCOPE IN FIRST PHASE)
+
+
+
+
+
+
+
+
+
+
