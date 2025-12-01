@@ -1,0 +1,392 @@
+
+MLOps Architecture – Suggested IAM Roles (Development + Staging/Production)
+
+NOTE:
+- These are logical roles and example names; you can adapt naming to your standards.
+- Permissions should be scoped to specific ARNs (S3 buckets, ECR repos, KMS keys, RDS, etc.) instead of using wildcards in production.
+- Many of these can be implemented as multiple roles if you want even finer separation of duties.
+
+====================================================
+1) DEVELOPMENT ACCOUNT – IAM ROLES
+====================================================
+
+1. Dev-SM-Studio-User-Role
+   Used by: SageMaker Studio user profiles (Data Scientists / ML Engineers)
+   Main permissions:
+   - sagemaker:* (restricted to dev account resources where possible)
+   - s3:GetObject, PutObject, ListBucket on:
+     - dev training / evaluation / intermediate S3 buckets
+   - ecr:GetAuthorizationToken, BatchGetImage, GetDownloadUrlForLayer on dev ECR repos
+   - logs:CreateLogGroup, CreateLogStream, PutLogEvents on dev log groups
+   - cloudwatch:GetMetricData, ListMetrics, GetMetricStatistics
+   - kms:Encrypt, Decrypt, GenerateDataKey for specific KMS keys
+   - secretsmanager:GetSecretValue or ssm:GetParameter for approved parameters
+   - iam:PassRole for dev SageMaker execution roles only (if needed for pipelines)
+
+2. Dev-SM-Training-Execution-Role
+   Used by: SageMaker training / retraining pipelines and training jobs in Dev
+   Main permissions:
+   - sagemaker:CreateTrainingJob, CreateProcessingJob, CreateTransformJob, CreatePipelineExecution, Describe*, List*
+   - s3:GetObject, PutObject, ListBucket on:
+     - dev-ml-training-bucket
+     - dev-ml-eval-bucket
+   - ecr:GetAuthorizationToken, BatchGetImage, GetDownloadUrlForLayer on dev training images
+   - logs:CreateLogGroup, CreateLogStream, PutLogEvents
+   - cloudwatch:PutMetricData
+   - kms:Encrypt, Decrypt, GenerateDataKey on training KMS keys
+   - secretsmanager:GetSecretValue or ssm:GetParameter for training-related secrets
+   - events:PutEvents (if pipeline needs to emit events)
+
+3. Dev-SM-Inference-Execution-Role
+   Used by: SageMaker inference pipelines in Dev (triggered by EventBridge / Lambda)
+   Main permissions:
+   - sagemaker:CreateProcessingJob, CreateTransformJob, CreateEndpoint*, InvokeEndpoint, Describe*, List*
+   - s3:GetObject, PutObject, ListBucket on:
+     - dev-ml-inference-input
+     - dev-ml-inference-output
+   - ecr:GetAuthorizationToken, BatchGetImage, GetDownloadUrlForLayer on inference images
+   - logs:CreateLogGroup, CreateLogStream, PutLogEvents
+   - cloudwatch:PutMetricData
+   - kms:Encrypt, Decrypt, GenerateDataKey
+   - secretsmanager:GetSecretValue or ssm:GetParameter for inference-related secrets
+
+4. Dev-MLflow-Service-Role
+   Used by: MLflow backend service (EC2/ECS/EKS/Lambda depending on implementation)
+   Main permissions:
+   - s3:GetObject, PutObject, ListBucket on dev-mlflow-artifacts bucket
+   - s3:GetObject, ListBucket on training / inference buckets (to reference artifacts)
+   - logs:CreateLogGroup, CreateLogStream, PutLogEvents for MLflow logs
+   - kms:Encrypt, Decrypt if MLflow bucket or DB uses KMS
+   - rds-db:connect (if MLflow tracking DB is in RDS)
+   - secretsmanager:GetSecretValue or ssm:GetParameter for DB credentials
+
+5. Dev-EventBridge-Invoke-SM-Role
+   Used by: EventBridge rules that start SageMaker pipelines
+   Main permissions:
+   - sagemaker:StartPipelineExecution, CreateProcessingJob, CreateTransformJob on specific pipelines
+   - iam:PassRole for Dev-SM-Inference-Execution-Role (if required)
+   NOTE: This can also be the same as the pipeline execution role if preferred.
+
+6. Dev-Lambda-Inference-Orchestrator-Role
+   Used by: Lambda functions that orchestrate inference pipelines
+   Main permissions:
+   - lambda:Write logs (logs:CreateLogGroup, CreateLogStream, PutLogEvents)
+   - sagemaker:StartPipelineExecution or CreateProcessingJob/TransformJob
+   - s3:GetObject, PutObject on relevant input/output buckets
+   - kms:Decrypt for reading encrypted data or secrets
+   - secretsmanager:GetSecretValue or ssm:GetParameter
+
+7. Dev-GitHub-Actions-Role
+   Type: IAM role with OIDC trust to GitHub
+   Used by: GitHub Actions workflows running from dev repo
+   Main permissions:
+   - ecr:CreateRepository, DescribeRepositories, InitiateLayerUpload, UploadLayerPart, CompleteLayerUpload, PutImage, BatchCheckLayerAvailability
+   - s3:GetObject, PutObject, ListBucket on:
+     - dev-cicd-artifacts bucket (if used)
+   - sagemaker:UpdatePipeline, CreatePipeline, StartPipelineExecution (if CI/CD triggers pipelines)
+   - iam:PassRole for Dev-SM-Training-Execution-Role / Dev-SM-Inference-Execution-Role (as needed)
+   - logs:CreateLogGroup, CreateLogStream, PutLogEvents (optional for deployment logging)
+
+8. Dev-ECR-Scan-Role (optional if using Aqua/other scanning service)
+   Used by: Security tooling to scan dev ECR images
+   Main permissions:
+   - ecr:DescribeImages, ListImages, BatchGetImage
+   - ecr:GetAuthorizationToken, GetDownloadUrlForLayer
+
+9. Dev-DataCopy-From-Prod-Role (if data copy from Prod is automated)
+   Used by: Cross-account data copy jobs (usually in Prod account assuming a pull model – but you may also have a dev-side role)
+   Main permissions (dev side):
+   - s3:PutObject on dev training buckets
+   - kms:Encrypt with dev KMS keys
+   Trust: Prod account service/role (if Prod is pushing data to Dev)
+
+10. Dev-Secrets-Management-Role
+    Used by: Automation that creates/rotates secrets for Dev
+    Main permissions:
+    - secretsmanager:CreateSecret, PutSecretValue, TagResource, DescribeSecret
+    - kms:Encrypt, Decrypt for secrets KMS key
+
+====================================================
+2) STAGING / PRODUCTION ACCOUNT – IAM ROLES
+====================================================
+
+11. Prod-SM-Retraining-Execution-Role
+    Used by: SageMaker retraining pipeline in retraining VPC
+    Main permissions:
+    - sagemaker:CreateTrainingJob, CreateProcessingJob, CreateTransformJob, CreatePipelineExecution, Describe*, List*
+    - s3:GetObject, ListBucket on:
+      - annotated data buckets
+      - factory upload buckets (if needed)
+    - s3:PutObject on:
+      - retraining outputs bucket
+    - ecr:GetAuthorizationToken, BatchGetImage, GetDownloadUrlForLayer on prod training images
+    - logs:CreateLogGroup, CreateLogStream, PutLogEvents
+    - cloudwatch:PutMetricData
+    - kms:Encrypt, Decrypt for prod keys
+    - secretsmanager:GetSecretValue or ssm:GetParameter (DB, endpoints, etc.)
+    - mlflow: write/registry operations (if using fine-grained MLflow auth; otherwise covered by infra role)
+    NOTE: This role must NOT have permissions to update production inference endpoints directly.
+
+12. Prod-SM-Inference-Execution-Role
+    Used by: SageMaker inference pipeline in inference VPC
+    Main permissions:
+    - sagemaker:CreateProcessingJob, CreateTransformJob, CreateEndpointConfig, CreateEndpoint, UpdateEndpoint, InvokeEndpoint, Describe*, List*
+    - s3:GetObject on factory upload bucket (input)
+    - s3:PutObject on inference output bucket (predictions, metadata)
+    - ecr:GetAuthorizationToken, BatchGetImage, GetDownloadUrlForLayer on prod inference images
+    - logs:CreateLogGroup, CreateLogStream, PutLogEvents
+    - cloudwatch:PutMetricData (inference metrics)
+    - kms:Encrypt, Decrypt, GenerateDataKey
+    - secretsmanager:GetSecretValue or ssm:GetParameter for inference secrets
+    - rds-db:connect (if pipeline writes inference metadata to RDS)
+
+13. Prod-EventBridge-Invoke-SM-Role
+    Used by: EventBridge rules that trigger retraining or inference pipeline
+    Main permissions:
+    - sagemaker:StartPipelineExecution or StartExecution on specific pipelines
+    - iam:PassRole for Prod-SM-Retraining-Execution-Role / Prod-SM-Inference-Execution-Role (as required)
+
+14. Prod-Lambda-Orchestration-Role
+    Used by: Lambda functions that orchestrate production workflows (translation, QC, etc.)
+    Main permissions:
+    - lambda:Write logs (logs:CreateLogGroup, CreateLogStream, PutLogEvents)
+    - sagemaker:StartPipelineExecution, CreateProcessingJob/TransformJob
+    - s3:GetObject, PutObject, ListBucket on relevant production buckets (input, output, annotated)
+    - rds:DescribeDBInstances, rds-db:connect (if Lambda talks to RDS)
+    - kms:Decrypt / Encrypt
+    - secretsmanager:GetSecretValue or ssm:GetParameter
+
+15. Prod-CVAT-ECS-Task-Execution-Role
+    Used by: ECS tasks running CVAT (Fargate/EC2)
+    Main permissions:
+    - ecr:GetAuthorizationToken, BatchGetImage, GetDownloadUrlForLayer (to pull CVAT image)
+    - logs:CreateLogGroup, CreateLogStream, PutLogEvents for task logs
+    - xray:PutTraceSegments, PutTelemetryRecords (if using X-Ray)
+
+16. Prod-CVAT-ECS-Task-Role
+    Used by: CVAT application containers
+    Main permissions:
+    - s3:GetObject, ListBucket on inference output bucket (to read images)
+    - s3:PutObject on annotated data bucket
+    - rds-db:connect to CVAT DB (Aurora/RDS)
+    - kms:Decrypt for DB credentials and bucket encryption
+    - secretsmanager:GetSecretValue or ssm:GetParameter for DB creds and app config
+    - cloudwatch:PutMetricData (optional, if CVAT pushes custom metrics)
+
+17. Prod-Grafana-Task-Role (if Grafana is deployed in ECS/EKS)
+    Used by: Grafana container
+    Main permissions:
+    - cloudwatch:ListMetrics, GetMetricData, GetMetricStatistics
+    - logs:DescribeLogGroups, DescribeLogStreams, GetLogEvents
+    - secretsmanager:GetSecretValue or ssm:GetParameter for Grafana config
+
+18. Prod-MLflow-Service-Role
+    Used by: MLflow backend in production
+    Main permissions:
+    - s3:GetObject, PutObject, ListBucket on prod-mlflow-artifacts bucket
+    - logs:CreateLogGroup, CreateLogStream, PutLogEvents
+    - rds-db:connect to MLflow tracking DB
+    - kms:Encrypt, Decrypt for artifacts and DB
+    - secretsmanager:GetSecretValue or ssm:GetParameter for DB credentials
+    - (Optional) sts:AssumeRole into Dev account for copying approved models / artifacts
+
+19. Prod-GitHub-Actions-Deploy-Role
+    Type: IAM role with OIDC trust to GitHub (separate from Dev)
+    Used by: GitHub Actions workflows to deploy to Prod
+    Main permissions:
+    - ecr:BatchGetImage, GetDownloadUrlForLayer, PutImage, CreateRepository, DescribeRepositories
+    - s3:GetObject, PutObject, ListBucket on:
+      - prod deployment artifacts bucket
+    - sagemaker:CreatePipeline, UpdatePipeline, StartPipelineExecution on prod pipelines
+    - cloudformation:CreateStack, UpdateStack, DescribeStacks, DeleteStack (if using IaC for infra)
+    - ecs:UpdateService, DescribeServices, RegisterTaskDefinition (for CVAT/Grafana ECS)
+    - rds:ModifyDBInstance (if schema migrations are automated; or use a separate DB migration role)
+    - iam:PassRole for:
+      - Prod-SM-Retraining-Execution-Role
+      - Prod-SM-Inference-Execution-Role
+      - Prod-CVAT-ECS-Task-Execution-Role
+    - logs:CreateLogGroup, CreateLogStream, PutLogEvents (optional)
+
+20. Prod-ImageCopy-From-Dev-Role (Cross-account)
+    Used by: GitHub Actions or automation to copy approved ECR images from Dev to Prod
+    In Prod account:
+      - ecr:CreateRepository, DescribeRepositories, BatchGetImage, PutImage
+      - sts:AssumeRole to a Dev-side role that has ecr:BatchGetImage/GetDownloadUrlForLayer
+    In Dev account (paired role):
+      - ecr:BatchGetImage, GetDownloadUrlForLayer on approved repos
+      - Trust: Prod account role
+
+21. Prod-DataCopy-To-Dev-Role (if factory data is copied down for Dev training)
+    Used by: Automation in Prod account
+    Main permissions:
+    - s3:GetObject, ListBucket on factory upload / annotated buckets
+    - sts:AssumeRole to Dev-DataCopy-From-Prod-Role
+    - kms:Decrypt for prod keys; kms:Encrypt for dev keys (through assumed role)
+
+22. Prod-Secrets-Management-Role
+    Used by: Automation managing production secrets
+    Main permissions:
+    - secretsmanager:CreateSecret, PutSecretValue, RotateSecret, DescribeSecret
+    - kms:Encrypt, Decrypt for secrets KMS key
+
+23. Global-Logging-and-Monitoring-Role (optional shared pattern in each account)
+    Used by: Central monitoring/alerting solution (e.g., cross-account NewRelic/CloudWatch dashboards)
+    Main permissions:
+    - logs:DescribeLogGroups, DescribeLogStreams, GetLogEvents (read-only)
+    - cloudwatch:ListMetrics, GetMetricData, GetMetricStatistics
+    - xray:BatchGetTraces, GetServiceGraph (if enabled)
+
+====================================================
+3) IDENTITY / ACCESS PATTERNS
+====================================================
+
+A. Data Scientist / ML Engineer access (Dev)
+   - Human users authenticate via SSO/Identity Center (or IAM users).
+   - They assume Dev-DS-MLEngineer-Role which can:
+     - Assume Dev-SM-Studio-User-Role (for Studio)
+     - Read MLflow UI, CloudWatch logs and metrics
+     - Read-only access to dev code repo (GitHub is usually separate, not IAM)
+
+B. Annotator access (Prod – CVAT)
+   - Annotators authenticate through Active Directory with MFA (Ping) via ALB.
+   - IAM is mostly for backend services; ALB + AD + CVAT RBAC control human access.
+   - No direct IAM roles for annotators are required beyond the ECS/CVAT task roles above.
+
+C. Cloud Engineering / Platform Ops
+   - Separate admin / ops roles with:
+     - Full access to infra (VPC, networking, ECS, RDS, etc.)
+     - Limited sagemaker:* where needed for support
+     - Change management via IaC (CloudFormation/Terraform) and GitHub Actions.
+
+This list gives you a practical starting set of IAM roles to implement the Dev + Staging/Prod MLOps architecture in your diagram. Each role should be backed by one or more customer-managed IAM policies that scope permissions down to only the ARNs actually required.
+------------------------------------------------------------------------------------
+# =====================================================
+# IAM ROLES & POLICIES REQUIRED - FULL ARCHITECTURE
+# Date: 01 Dec 2025
+# Scope: Development + Production Accounts
+# =====================================================
+
+## 1. DEVELOPMENT ACCOUNT ROLES
+# -----------------------------------------------------
+1. SageMakerStudioExecutionRole_Dev
+   - For SageMaker Studio notebooks (data scientists & ML engineers)
+   - Needs: s3 (dev buckets), sagemaker:*, ecr:*, logs, ssm/secrets, mlflow access
+
+2. SageMakerPipelineExecutionRole_Dev
+   - Used by ALL SageMaker Pipelines (training & inference) in Dev
+   - Needs: s3 full on dev buckets, ecr, sagemaker:CreateTrainingJob/HyperParameterTuningJob/ProcessingJob, passrole, logs, events
+
+3. SageMakerTrainingJobRole_Dev
+   - Role assumed by training jobs (can be same as Pipeline role or separate)
+
+4. LambdaInferenceTriggerRole_Dev
+   - For Lambda that triggers inference pipeline on S3 upload (dev testing)
+   - Needs: sagemaker:StartPipelineExecution, s3 read dev input bucket, logs
+
+5. GitHubActions_Dev_ECR_Push_Role
+   - Assumed by GitHub Actions OIDC to build & push Docker images to Dev ECR
+   - Needs: ecr:*, ecr:GetAuthorizationToken (restricted to dev repo)
+
+6. GitHubActions_Dev_SageMaker_Trigger_Role
+   - Assumed by GitHub Actions to start SageMaker pipelines in Dev
+   - Needs: sagemaker:StartPipelineExecution, passrole (to pipeline role)
+
+7. MLflowServerRole_Dev (if MLflow is on EC2/ECS/EKS)
+   - Access to S3 artifact bucket, DynamoDB (for tracking), logs
+
+8. EventBridge_S3_Trigger_Role_Dev (optional)
+   - For EventBridge → Lambda → SageMaker pipeline in dev
+
+## 2. PRODUCTION ACCOUNT ROLES
+# -----------------------------------------------------
+9. SageMakerPipelineExecutionRole_Retraining_Prod
+   - Used ONLY by retraining pipeline in the isolated Retraining VPC
+   - Needs: s3 access to annotated data buckets, mlflow (prod), logs, NO auto model deploy permissions
+
+10. SageMakerPipelineExecutionRole_Inference_Prod
+    - Used by production inference pipeline in Inference VPC
+    - Needs: s3 read factory input bucket, s3 write inference output bucket, RDS access, logs
+
+11. LambdaInferenceOrchestratorRole_Prod
+    - Lambda that gets triggered by S3 factory upload → starts inference pipeline
+    - Needs: sagemaker:StartPipelineExecution (inference pipeline), s3 read, logs, RDS write
+
+12. LambdaCVATConfigRole_Prod (if needed for CVAT updates)
+
+13. ECS_CVAT_TaskRole_Prod
+    - Role for CVAT ECS tasks (Fargate/EC2)
+    - Needs: s3 read/write annotated & inference buckets, RDS/Aurora access, secrets manager (DB creds)
+
+14. ECS_CVAT_ExecutionRole_Prod
+    - ECS task execution role (logs, ecr pull, etc.)
+
+15. GitHubActions_Prod_Deploy_Role
+    - Assumed by GitHub Actions OIDC for production deployment
+    - Critical role with manual approval gate
+    - Permissions:
+      - ecr: ReplicateImage (copy approved images from Dev → Prod ECR)
+      - sagemaker:CreateModel, CreateEndpointConfig, CreateEndpoint (or Update), CreatePipeline, etc.
+      - sagemaker:StartPipelineExecution (only retraining pipeline, NOT auto inference deploy)
+      - ssm:PutParameter / ssm:GetParameter (for pipeline params)
+      - PassRole to all production SageMaker/ECS roles above
+
+16. GitHubActions_Prod_ECR_Copy_Role
+    - Separate narrower role just for copying approved images Dev ECR → Prod ECR
+
+17. MLflowServerRole_Prod (read-only for data scientists)
+
+18. RDS_Inference_Metadata_Role_Prod
+    - Used by inference pipeline to write inference logs/metadata to RDS/Aurora
+
+## 3. CROSS-ACCOUNT ROLES (if Dev and Prod are separate AWS accounts)
+# -----------------------------------------------------
+19. CrossAccount_DevToProd_ECR_Replicate_Role (in Prod account)
+    - Assumed by Dev account or GitHub Actions to replicate images
+
+20. CrossAccount_Prod_MLflow_Copy_Role (if you copy models from Dev MLflow → Prod MLflow)
+
+## 4. HUMAN ACCESS ROLES / MANAGED POLICIES
+# -----------------------------------------------------
+21. DataScientist_Dev_Access_Role
+    - Assumed by data scientists via SSO or console
+    - Full SageMaker Studio, MLflow write, S3 dev buckets, GitHub
+
+22. DataScientist_Prod_Monitoring_Role
+    - READ-ONLY access in Prod
+    - CloudWatch, CloudWatch Logs, MLflow UI (read), NO S3 direct access, NO SageMaker create/update
+
+23. ML_Engineer_Prod_Deploy_Role
+    - For the very few people who can approve production deployments
+
+24. Annotator_CVAT_Access (usually via Active Directory group → IAM role via SSO)
+    - Only access to CVAT URL (via ALB + Ping MFA), no AWS console access
+
+25. Security_Audit_Role
+    - For security team to review ECR scans, CloudTrail, Config
+
+## 5. SERVICE-LINKED ROLES (AWS auto-creates, just note)
+# -----------------------------------------------------
+- AWSServiceRoleForAmazonSageMakerNotebooks
+- AWSServiceRoleForSageMaker
+- AWSServiceRoleForECS (if using ECS)
+
+# =====================================================
+# RECOMMENDED NAMING CONVENTION
+# -----------------------------------------------------
+<Company>-<env>-<workload>-role
+Examples:
+MyCorp-dev-sagemaker-pipeline-role
+MyCorp-prod-inference-pipeline-role
+MyCorp-github-prod-deploy-role
+MyCorp-datascientist-prod-monitoring-role
+
+# =====================================================
+# TRUST POLICIES SUMMARY
+# -----------------------------------------------------
+- SageMaker roles → trust: sagemaker.amazonaws.com
+- Lambda roles      → trust: lambda.amazonaws.com
+- ECS task roles    → trust: ecs-tasks.amazonaws.com
+- GitHub Actions    → trust: OIDC token from your GitHub repo/org
+  (sts:AssumeRoleWithWebIdentity + conditions on repo & branch)
+
+Save this as: IAM_Roles_Required_Full_ML_Architecture.txt
