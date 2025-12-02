@@ -1,0 +1,484 @@
+    1  sudo su -
+    2  cd cvat
+    3  ls
+    4  ls -lrt
+    5  git clone https://github.com/opencv/cvat.git
+    6  cd cvat/helm-chart
+    7  helm dependency update
+    8  helm repo add cvat-helm https://kapernikov.github.io/cvat-helm/
+    9  helm repo update
+   10  helm inspect values cvat-helm/cvat-helm
+   11  kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+   12  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.0/cert-manager.yaml
+   13  vi my-cvat-values.yaml
+   14  helm dependency update
+   15  helm install cvat . -f ../my-cvat-values.yaml --namespace cvat --create-namespace
+   16  helm install cvat . -f my-cvat-values.yaml --namespace cvat --create-namespace
+   17  kubectl get pods
+   18  kubectl get pods -n cvat
+   19  kubectl -n cvat get svc,ingress
+   20  kubectl -n cvat get pvc
+   21  kubectl get pods -n cvat
+   22  cvat describe pods cvat-backend-server-7b6f74d686-8xfzt
+   23  cvat describe pods cvat-backend-server-7b6f74d686-8xfzt -n cvat
+   24  kubectl describe pods cvat-backend-server-7b6f74d686-8xfzt -n cvat
+   25  kubectl get pvc -n cvat
+   26  kubectl get sc -n cvat
+   27  eksctl create addon   --name aws-ebs-csi-driver   --cluster cvat-ultimate-2025   --region ap-south-1   --force
+   28  eksctl create iamserviceaccount   --name ebs-csi-controller-sa   --namespace kube-system   --cluster demo-ekscluster   --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy   --approve   --role-name AmazonEKS_EBS_CSI_DriverRole
+   29  eksctl create iamserviceaccount   --name ebs-csi-controller-sa   --namespace kube-system   --cluster cvat-ultimate-2025 \
+   30  kubectl get pods -n kube-system | grep ebs
+   31  eksctl create iamserviceaccount --name ebs-csi-controller-sa --namespace kube-system --cluster cvat-ultimate-2025 --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy --approve --role-name AmazonEKS_EBS_CSI_DriverRole
+   32  kubectl get pods -n kube-system | grep ebs
+   33  eksctl get iamserviceaccount --cluster=cv at-ultimate-2025 --namespace=kube-system
+   34  kubectl get sa ebs-csi-controller-sa -n kube-system -o yaml
+   35  kubectl get pods -n kube-system | grep ebs
+   36  kubectl delete pods ebs-csi-controller-8dfcc5d6b-4hqk2 -n kube-system
+   37  kubectl delete pods ebs-csi-controller-8dfcc5d6b-zkqgb -n kube-system
+   38  kubectl get pods -n kube-system | grep ebs
+   39  kubectl describe pod ebs-csi-controller-8dfcc5d6b-trdln -n kube-system
+   40  eksctl delete addon   --name aws-ebs-csi-driver   --cluster  cvat-ultimate-2025 \
+   41  eksctl create addon \
+   42  eksctl create addon   --name aws-ebs-csi-driver   --cluster cvat-ultimate-2025 \
+   43  kubectl get pods -n kube-system | grep ebs
+   44  eksctl create iamserviceaccount   --name ebs-csi-controller-sa   --namespace kube-system   --cluster cvat-ultimate-2025 \
+   45  eksctl create iamserviceaccount --name ebs-csi-controller-sa --namespace kube-system --cluster cvat-ultimate-2025 --attach-policy-arn arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicy --approve --override-existing-serviceaccounts
+   46  eksctl utils associate-iam-oidc-provider   --region ap-south-1   --cluster cvat-ultimate-2025   --approve
+   47  eksctl create iamserviceaccount   --name ebs-csi-controller-sa   --namespace kube-system   --cluster cvat-ultimate-2025   --attach-policy-arn arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicy   --approve   --override-existing-serviceaccounts
+   48  kubectl get pods -n kube-system | grep ebs
+   49  kubectl -n kube-system get sa ebs-csi-controller-sa -o yaml
+   50  kubectl get sc -n cvat
+   51  vi gp3-sc.yaml
+   52  kubectl apply -f gp3-sc.yaml -n cvat
+   53  kubectl get sc -n cvat
+   54  kubectl get pvc -n cvat
+   55  kubectl edit pvc cvat-backend-data -n cvat
+   56  kubectl edit pvc cvat-kvrocks-data-cvat-kvrocks-0 -n cvat
+   57  kubectl edit pvc data-cvat-clickhouse-shard0-0 -n cvat
+   58  kubectl edit pvc data-cvat-postgresql-0 -n cvat
+   59  kubectl edit pvc redis-data-cvat-redis-master-0 -n cvat
+   60  kubectl get pvc -n cvat
+   61  kubectl get pvc -A
+   62  kubectl delete pvc  cvat-backend-data -n cvat
+   63  kubectl get pvc -A
+   64  kubectl get pods -n cvt
+   65  kubectl get pods -n cvat
+   66  helm upgrade helm-chart .
+   67  helm upgrade helm-chart . -n cvat
+   68  helm list
+   69  helm list -n cvat
+   70  helm upgrade cvat -n cvat
+   71  helm upgrade cvat . -n cvat
+   72  kubectl get pvc -A
+   73  kubectl edit pvc cvat-backend-data -n cvat
+   74  kubectl get pvc -A
+   75  kubectl get sc -A
+   76  kubectl edit pvc cvat-backend-data -n cvat
+   77  kubectl get pods -n kube-system | egrep 'ebs|aws-ebs'
+   78  helm uninstall aws-ebs-csi-driver -n kube-system
+   79  kubectl delete deployment ebs-csi-controller -n kube-system
+   80  kubectl delete daemonset ebs-csi-node -n kube-system
+   81  kubectl delete csidriver ebs.csi.aws.com
+   82  eksctl create addon   --name aws-ebs-csi-driver   --cluster cvat-ultimate-2025   --region ap-south-1   --force
+   83*
+   84  kubectl get pods -n kube-system | egrep 'ebs|aws-ebs'
+   85  eksctl delete cluster --name cvat-ultimate-2025 --region ap-south-1
+   86  ls
+   87  cd
+   88  ls -lrt
+   89  git clone https://github.com/cvat-ai/cvat.git
+   90  cd cvat
+   91  cd helm-chart/
+   92  vi ebs-storageclass-gp3.yaml
+   93  kubectl create namespace cvat
+   94  kubectl apply -f ebs-storageclass-gp3.yaml -n cvat
+   95  cd ..
+   96  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   97  helm dependency build
+   98  cd helm-chart/
+   99  helm dependency build
+  100  cd ..
+  101  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  102  kubectl get pvc -n cvat
+  103  kubectl get sc -n cvat
+  104  eksctl utils associate-iam-oidc-provider --region ap-south-1 --cluster cvat-prod-2025 --approve
+  105  eksctl create iamserviceaccount   --region ap-south-1   --cluster cvat-prod-2025 \
+  106  eksctl create iamserviceaccount --region ap-south-1 --cluster cvat-prod-2025 --namespace kube-system --name ebs-csi-controller-sa --attach-policy-arn arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicy --approve --override-existing-serviceaccounts
+  107  eksctl create iamserviceaccount   --region ap-south-1   --cluster cvat-prod-2025   --namespace kube-system   --name ebs-csi-controller-sa   --attach-policy-arn arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicy   --approve   --override-existing-serviceaccounts   -v 4
+  108  kubectl get pvc -n cvat
+  109  kubectl get sc -n cvat
+  110  kubectl edit pvc cvat-test-backend-data
+  111  kubectl edit pvc cvat-test-backend-data -n cvat
+  112  kubectl get pvc -n cvat
+  113  kubectl describe pvc cvat-test-backend-data -n cvat
+  114  kubectl edit pvc cvat-test-backend-data -n cvat
+  115  kubectl get pvc -n cvat
+  116  kubectl edit pvc cvat-test-kvrocks-data-cvat-test-kvrocks-0 -n cvat
+  117  kubectl edit pvc data-cvat-test-clickhouse-shard0-0 -n cvat
+  118  kubectl edit pvc data-cvat-test-postgresql-0 -n cvat
+  119  kubectl edit pvc redis-data-cvat-test-redis-master-0 -n cvat
+  120  kubectl get pvc -n cvat
+  121  kubectl -n kube-system get pods
+  122  kubectl get pods
+  123  kubectl get pods -n cvat
+  124*
+  125  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  126*
+  127*
+  128  kubectl get sc -n cvat
+  129  kubectl get svc -n cvat
+  130  kubectl get pods -n cvat
+  131  kubectl describe pods cvat-test-backend-server-5f7ffcb86c-xjsrv -n cvat
+  132  cd helm-chart/
+  133  ls
+  134  kubectl apply -f ebs-storageclass-gp3.yaml -n cvat
+  135  kubectl get sc -n cvat
+  136  kubectl get pvc -n cvat
+  137  cat ebs-storageclass-gp3.yaml
+  138  kubectl get sc ebs-sc-gp3 -o yaml
+  139  kubectl get csidrivers
+  140  kubectl -n kube-system get pods | grep -i ebs || kubectl -n kube-system get pods | grep -i csi
+  141  kubectl -n kube-system logs -l app.kubernetes.io/name=aws-ebs-csi-driver --tail=200 || true
+  142  kubectl -n kube-system pods -n cvat
+  143  kubectl -n kube-system pods
+  144  kuectl get pods -n kube-system
+  145  kubectl get pods -n kube-system
+  146  kubectl get pods -n cvat
+  147  kubectl get pvc -n cvat
+  148  kubectl get sc -n cvat
+  149  kubectl get pods -n cvat
+  150  kubectl describe pod cvat-test-backend-server-5f7ffcb86c-xjsrv -n cvat
+  151  kubectl get pvc -n cvat
+  152  kubectl describe pvc cvat-test-backend-data -n cvat
+  153  kubectl edit pvc cvat-test-backend-data -n cvat
+  154  kubectl get pvc -n cvat
+  155  kubectl edit pvc cvat-test-backend-data -n cvat
+  156  ls
+  157  cat ebs-storageclass-gp3.yaml
+  158  kubect get pvc -n cvat
+  159  kubectl get pvc -n cvat
+  160  kubectl describe pvc data-cvat-test-clickhouse-shard0-0 -n cvat
+  161  kubectl get nodes
+  162  kubectl get csidrivers
+  163  kubectl -n kube-system get sa ebs-csi-controller-sa -o yaml
+  164  kubectl logs -n kube-system deploy/ebs-csi-controller -c ebs-plugin
+  165  kubectl logs -n kube-system
+  166  kubectl get pods -n kube-system
+  167  kubectl describe pods coredns-9849957d-pb6t7 -n kube-system
+  168  kubectl get csidrivers
+  169  kubectl get csinodes
+  170  kubectl get csinode
+  171  kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-ebs-csi-driver
+  172  k get deploy -n kube-system | findstr ebs
+  173  kubectl get deploy -n kube-system | findstr ebs
+  174  aws eks update-addon
+  175  aws eks update-addon --cluster-name cvat-prod-2025 --addon-name aws-ebs-csi-driver --region ap-south-1
+  176  aws eks create-addon --cluster-name cvat-prod-2025 --addon-name aws-ebs-csi-driver --region ap-south-1
+  177  kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-ebs-csi-driver
+  178  kubectl get pvc -n cvat
+  179  kubectl get pods -n cvat
+  180  cd ..
+  181  helm list -n cvat
+  182  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  183  kubectl get pods -n cvat
+  184  kubectl get pvc -n cvat
+  185  kubectl describe pvc cvat-test-backend-data -n cvat
+  186  cd helm-chart/
+  187  ls
+  188  cat ebs-storageclass-gp3.yaml
+  189  kubectl get pvc -n cvat
+  190  kubect edit pvc cvat-test-backend-data -n cvat
+  191  kubectl edit pvc cvat-test-backend-data -n cvat
+  192  vi /tmp/kubectl-edit-1974717877.yaml
+  193  kubectl apply -f  /tmp/kubectl-edit-1974717877.yaml -n cvat
+  194  kubectl get pvc -n cvat
+  195  kubectl delete pvc cvat-test-backend-data -n cvat
+  196  kubectl apply -f  /tmp/kubectl-edit-1974717877.yaml -n cvat
+  197*
+  198*
+  199  ls
+  200  less values.yaml
+  201  cp values.yaml values.yaml.bkp
+  202  vi values.yaml
+  203  less values.yaml
+  204  helm list -n cvat
+  205  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  206  cd ..
+  207  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  208  kubectl get pvc -n cvat
+  209  history
+  210  kubectl get pvc -n cvat
+  211  kubectl delete pvc cvat-test-backend-data -n cvat
+  212  kubectl delete pvc cvat-test-backend-data -n cvat --force
+  213  cd helm-chart/
+  214  helm list -n cvat
+  215  helm uninstall cvat-test . -n cvat
+  216  kubectl get pods -n cvat
+  217  kubectl get pvc -n cvat
+  218  ls -lrt
+  219  vi ebs-storageclass-gp3.yaml
+  220  less values.yaml
+  221  kubectl get pods -n cvat
+  222  cd ..
+  223  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  224  kubectl get pvc -n cvat
+  225  kubectl get pods -n cvat
+  226  cd /tmp
+  227  ls
+  228  kubectl get pvc -n cvat
+  229  kubectl edit pvc cvat-test-backend-data -n cvat
+  230  vi /tmp/kubectl-edit-361149847.yaml
+  231  kubectl apply -f /tmp/kubectl-edit-361149847.yaml -n cvat
+  232  kubectl delete pvc cvat-test-backend-data -n cvat
+  233  kubectl apply -f /tmp/kubectl-edit-361149847.yaml -n cvat
+  234  kubectl get pvc -n cvat
+  235  vi /tmp/kubectl-edit-361149847.yaml
+  236  kubectl delete pvc cvat-test-backend-data -n cvat
+  237  kubectl apply -f /tmp/kubectl-edit-361149847.yaml -n cvat
+  238  kubectl get pvc -n cvat
+  239  kubectl get pods -n cvat
+  240  kubectl get svc -n cvat
+  241  cd cvat
+  242  cd
+  243  cd cvat
+  244  ls
+  245  cd helm-chart/
+  246  ls
+  247  less values.yaml
+  248  kubectl get svc -n cvat
+  249*
+  250  kubectl get ingress -n cvat
+  251  kubectl get ingress
+  252  kubectl get ingress -n cvat
+  253  kubectl port-forward svc/cvat-test-frontend-service 8000:8000
+  254  kubectl get svc -n cvat
+  255  kubectl port-forward svc/cvat-test-frontend-service 8000:8000 -n cvat
+  256  kubectl get pods -n cvat
+  257  kubectl describe pods cvat-test-backend-initializer-r3-hnm56 -n cvat
+  258  kubectl get pvc -n cvat
+  259*
+  260  kubectl get pods -n cvat
+  261  kubectl describe pods cvat-test-backend-server-5f7ffcb86c-vrv5c -n cvat
+  262  kubectl get pods -n cvat
+  263  kubectl describe pods cvat-test-backend-worker-annotation-c8c8df79-xj4v8 -n cvat
+  264  kubectl get pvc -n cvat
+  265  kubectl get pods -n cvat
+  266  kubectl describe pods cvat-test-backend-worker-utils-76ff8bd7d8-4d9fp -n cvat
+  267  history
+  268  ls
+  269  kubectl get sc -n cvat
+  270  vi efs-sc.yaml
+  271  kubectl apply -f efs-sc.yaml -n cvat
+  272  kubectl get sc -n cvat
+  273  vi efs-sc.yaml
+  274  kubectl edit sc ebs-sc-gp3 -n cvat
+  275  vi efs-sc.yaml
+  276  kubectl apply -f efs-sc.yaml -n cvat
+  277  kubectl get sc -n cvat
+  278  kubectl get pvc -n cvat
+  279  kubectl edit pvc cvat-test-backend-data -n cvat
+  280  vi /tmp/kubectl-edit-221097777.yaml
+  281  ls
+  282  cd charts/
+  283  ls -lrt
+  284  cd ..
+  285  ls -lrt
+  286  cd templates/
+  287  ls -lrt
+  288  ls
+  289  cat cvat-postgres-secret.yml
+  290  cat ingress.yaml
+  291  kubectl set sc -n cvat
+  292  kubectl get sc -n cvat
+  293  ls -lrt
+  294  less cvat_backend
+  295  cd cvat_backend
+  296  ls -lrt
+  297  less service.yml
+  298  cd worker_annotation/
+  299  ls -lrt
+  300  cat deployment.yml
+  301  cd ../..
+  302  cd ..
+  303  ls
+  304  vi values.yaml
+  305  helm list -n cvat
+  306  helm uninstall cvat-test . -n cvat
+  307  helm uninstall cvat-test  -n cvat
+  308  helm list -n cvat
+  309  kubect get pvc -n cvat
+  310  kubectl get pvc -n cvat
+  311  kubectl delete pvc cvat-test-backend-data cvat-test-kvrocks-data-cvat-test-kvrocks-0 data-cvat-test-clickhouse-shard0-0 data-cvat-test-postgresql-0 redis-data-cvat-test-redis-master-0
+  312  kubectl delete pvc cvat-test-backend-data cvat-test-kvrocks-data-cvat-test-kvrocks-0 data-cvat-test-clickhouse-shard0-0 data-cvat-test-postgresql-0 redis-data-cvat-test-redis-master-0 -n cvat
+  313  kubect get pv -n cvat
+  314  kubectl get pv -n cvat
+  315  kubectl get sc -n cvat
+  316  cd ..
+  317  helm upgrade -n cvat cvat-prod -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  318  kubectl get pods -n cvat
+  319  kubectl get pvc -n cvat
+  320  cd helm-chart/
+  321  ls
+  322  vi values.yaml
+  323  kubectl edit pvc data-cvat-prod-clickhouse-shard0-0 -n cvat
+  324  kubectl apply -f /tmp/kubectl-edit-3751437595.yaml -n cvat
+  325  vi /tmp/kubectl-edit-3751437595.yaml
+  326  kubectl apply -f /tmp/kubectl-edit-3751437595.yaml -n cvat
+  327  kubectl get pvc -n cvat
+  328  kubectl edit pvc data-cvat-prod-postgresql-0 -n cvat
+  329  kubectl get pvc -n cvat
+  330  kubectl edit pvc redis-data-cvat-prod-redis-master-0 -n cvat
+  331  kubectl get pvc -n cvat
+  332  aws eks update-addon --cluster-name cvat-prod-2025 --addon-name aws-efs-csi-driver --region ap-south-1
+  333  kubectl get pvc -n cvat
+  334  kubectl get pv -n cvat
+  335  kubectl get pvc -n cvat
+  336  aws eks describe-addon --cluster-name cvat-prod-2025 --addon-name aws-efs-csi-driver --region ap-south-1
+  337  kubectl get pvc -n cvat
+  338  eksctl create iamserviceaccount   --region ap-south-1   --cluster cvat-prod-2025   --namespace kube-system   --name efs-csi-controller-sa   --attach-policy-arn arn:aws:iam::aws:policy/AmazonEFSCSIDriverPolicy   --approve   --override-existing-serviceaccounts
+  339  eksctl create iamserviceaccount   --region ap-south-1   --cluster cvat-prod-2025   --namespace kube-system   --name efs-csi-controller-sa   --attach-policy-arn arn:aws:iam::aws:policy/AmazonEFSCSIDriverPolicy   --approve   --override-existing-serviceaccounts   --verbose 4
+  340  kubectl get pvc -n cvat
+  341  kubectl get pv -n cvat
+  342  kubectl get pods -n cvat
+  343  ls -lrt
+  344  cat efs-sc.yaml
+  345  kubectl log -f kube-system deploy/efs-csi-controller -c efs-plugin
+  346  kubectl logs -f kube-system deploy/efs-csi-controller -c efs-plugin
+  347  kubectl logs -n kube-system deploy/efs-csi-controller -c efs-plugin
+  348  aws iam attach-role-policy AmazonEFSCSIDriverRole --policy-arn arn:aws:iam::aws:policy/AmazonEFSCSIDriverPolicy
+  349  aws iam attach-role-policy --role-name AmazonEFSCSIDriverRole --policy-arn arn:aws:iam::aws:policy/AmazonEFSCSIDriverPolicy
+  350  kubectl -n kube-system get sa efs-csi-controller-sa -o yaml
+  351  AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+  352  OIDC_ISSUER=$(aws eks describe-cluster --name cvat-prod-2025 --region ap-south-1 --query "cluster.identity.oidc.issuer" --output text)
+  353  echo "ACCOUNT=$AWS_ACCOUNT"
+  354  echo "OIDC_ISSUER=$OIDC_ISSUER"
+  355  OIDC_HOST=${OIDC_ISSUER#https://}
+  356  echo "OIDC_HOST=$OIDC_HOST"
+  357  cat > trust.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Federated": "arn:aws:iam::${AWS_ACCOUNT}:oidc-provider/${OIDC_HOST}" },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "${OIDC_HOST}:sub": "system:serviceaccount:kube-system:efs-csi-controller-sa"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+  358  cat trust.json
+  359  ROLE_NAME="efs-csi-controller-role"
+  360  aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document file://trust.json --region ap-south-1
+  361  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/AmazonEFSCSIDriverPolicy --region ap-south-1 || aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy --region ap-south-1
+  362  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy --region ap-south-1
+  363  ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT}:role/${ROLE_NAME}"
+  364  kubectl -n kube-system annotate serviceaccount efs-csi-controller-sa eks.amazonaws.com/role-arn="$ROLE_ARN" --overwrite
+  365  kubectl -n kube-system get sa efs-csi-controller-sa -o yaml | sed -n '1,40p'
+  366  kubectl -n kube-system delete pod -l app.kubernetes.io/name=aws-efs-csi-driver
+  367  kubectl -n kube-system get pods -l app.kubernetes.io/name=aws-efs-csi-driver -w
+  368  kubectl -n kube-system logs -l app.kubernetes.io/name=aws-efs-csi-driver -c efs-plugin --tail=200
+  369  kubectl get pvc -n cvat
+  370  kubectl get pods -n cvat
+  371  kubectl describe pod cvat-prod-opa-8dc4fdff4-l8jdj -n cvat
+  372  kubectl get pods -n cvat
+  373  kubectl describe pod cvat-prod-backend-server-598b77f764-mfrht -n cvat
+  374  kubectl get pods -n cvat
+  375  kubectl describe pod cvat-prod-postgresql-0 -n cvat
+  376  kubectl get pods -n cvat
+  377  kubectl describe pod cvat-prod-postgresql-0 -n cvat
+  378  kubectl get pvc -n cvat
+  379  kubectl -n kube-system get pods -l app.kubernetes.io/name=aws-efs-csi-driver -o wide
+  380  kubectl describe nodes | egrep -A3 "Name:|Capacity:|Allocatable:"
+  381  kubectl get nodes -o wide
+  382  kubectl top nodes
+  383  kubectl -n cvat get pods cvat-prod-postgresql-0 -o wide
+  384  kubectl -n cvat logs cvat-prod-postgresql-0 -c postgresql --tail=200
+  385*
+  386  kubectl -n cvat describe pod cvat-prod-postgresql-0
+  387  helm uninstall dev-test -n cvat
+  388  helm list -n cvat
+  389  helm uninstall cvat-prod -n cvat
+  390  history
+ubuntu@ip-172-31-38-138:~/cvat/helm-chart$
+
+-----------------------------------------------------------
+
+
+
+  1  curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+    2  sudo apt-get update
+    3  sudo curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    4  sudo apt-get install unzip
+    5  sudo unzip awscliv2.zip
+    6  sudo ./aws/install
+    7  aws --version
+    8  curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+    9  sudo mv /tmp/eksctl /usr/local/bin
+   10  eksctl version
+   11  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+   12  sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+   13  kubectl version --client
+   14  aws configure
+   15  eksctl create cluster --name cvat-test-2025 --region ap-south-1 --version 1.33 --nodegroup-name linux-nodes --node-type t3.medium --nodes 2 --node-volume-size 50
+   16  eksctl create cluster --name cvat-ultimate-2025 --region ap-south-1 --version 1.33 --nodegroup-name linux-nodes --node-type t3.medium --nodes 2 --node-volume-size 50
+   17  ls -lrt
+   18  rm -rf cvat
+   19  ls -lrt
+   20  vi cluster.yaml
+   21  eksctl create cluster -f cluster.yaml
+   22  vi cluster.yaml
+   23  eksctl create cluster -f cluster.yaml
+   24  vi cluster.yaml
+   25  eksctl create cluster -f cluster.yaml
+   26  vi cluster.yaml
+   27  eksctl create cluster -f cluster.yaml
+   28  vi cluster.yaml
+   29  eksctl create cluster -f cluster.yaml
+   30  vi cluster.yaml
+   31  eksctl create cluster -f cluster.yaml
+   32  vi cluster.yaml
+   33  eksctl create cluster -f cluster.yaml
+   34  cd cvat
+   35  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   36  history
+ubuntu@ip-172-31-38-138:~/cvat$
+
+
+-----------------------------------------
+
+eksctl create iamserviceaccount \
+  --region ap-south-1 \
+  --cluster cvat-prod-2025 \
+  --namespace kube-system \
+  --name efs-csi-controller-sa \
+  --attach-policy-arn arn:aws:iam::aws:policy/AmazonEFSCSIDriverPolicy \
+  --approve \
+  --override-existing-serviceaccounts \
+  --verbose 4
+
+
+AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+OIDC_ISSUER=$(aws eks describe-cluster --name cvat-prod-2025 --region ap-south-1 --query "cluster.identity.oidc.issuer" --output text)
+echo "ACCOUNT=$AWS_ACCOUNT"
+echo "OIDC_ISSUER=$OIDC_ISSUER"
+# prepare OIDC ID host part (no https://)
+OIDC_HOST=${OIDC_ISSUER#https://}
+echo "OIDC_HOST=$OIDC_HOST"
+
+arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy
+
+aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy --region ap-south-1 
+
+
+
+
+
+
+
+------------------------------------------
