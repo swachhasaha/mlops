@@ -1,0 +1,154 @@
+cvat-dev-backend-data                      Bound    pv-ebs-backendata   20Gi       RWO            ebs-sc-gp3     <unset>                 67m
+cvat-dev-kvrocks-data-cvat-dev-kvrocks-0   Bound    pv-ebs-kvrocks      100Gi      RWO            ebs-sc-gp3     <unset>                 67m
+data-cvat-dev-clickhouse-shard0-0          Bound    pv-ebs-clickhouse   8Gi        RWO            ebs-sc-gp3     <unset>                 67m
+data-cvat-dev-postgresql-0                 Bound    pv-ebs-postgres     8Gi        RWO            ebs-sc-gp3     <unset>                 67m
+redis-data-cvat-dev-redis-master-0 
+----------------------
+cvat-dev-backend-data  
+
+
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ebs-backendata
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ebs-sc-gp3
+  csi:
+    driver: ebs.csi.aws.com
+    volumeHandle: vol-064b924efe8435903  
+    fsType: ext4
+  claimRef:
+    namespace: dev
+    name: cvat-dev-backend-data
+	
+	
+---------------------------
+cvat-dev-kvrocks-data-cvat-dev-kvrocks-0 
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ebs-kvrocks
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ebs-sc-gp3
+  csi:
+    driver: ebs.csi.aws.com
+    volumeHandle: vol-03f618dae83f8c9ae 
+    fsType: ext4
+  claimRef:
+    namespace: dev
+    name: cvat-dev-kvrocks-data-cvat-dev-kvrocks-0
+	
+	
+=---------------------
+
+data-cvat-dev-clickhouse-shard0-0 
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ebs-clickhouse
+spec:
+  capacity:
+    storage: 8Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ebs-sc-gp3
+  csi:
+    driver: ebs.csi.aws.com
+    volumeHandle: vol-0e0b788ae241fe4c7 
+    fsType: ext4
+  claimRef:
+    namespace: dev
+    name: data-cvat-dev-clickhouse-shard0-0
+	
+--------------------------------------------
+
+data-cvat-dev-postgresql-0  
+
+
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ebs-postgres
+spec:
+  capacity:
+    storage: 8Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ebs-sc-gp3
+  csi:
+    driver: ebs.csi.aws.com
+    volumeHandle: vol-00ce37478e4bc9e06  
+    fsType: ext4
+  claimRef:
+    namespace: dev
+    name: data-cvat-dev-postgresql-0  
+	
+---------------------------------------
+
+redis-data-cvat-dev-redis-master-0 
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-ebs-redis
+spec:
+  capacity:
+    storage: 8Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ebs-sc-gp3
+  csi:
+    driver: ebs.csi.aws.com
+    volumeHandle: vol-00d259c685e6fc689  
+    fsType: ext4
+  claimRef:
+    namespace: dev
+    name: redis-data-cvat-dev-redis-master-0
+
+eksctl create iamserviceaccount   --region ap-south-1   --cluster cvat-test-5-12-2025   --namespace kube-system   --name ebs-csi-controller-sa   --attach-policy-arn arn:aws:iam::aws:policy/AmazonEBSCSIDriverPolicy   --approve   --override-existing-serviceaccounts   -v 4
+
+
+eksctl create iamserviceaccount \
+  --region ap-south-1 \
+  --cluster cvat-test-4-12-2025   \
+  --namespace kube-system \
+  --name efs-csi-controller-sa \
+  --attach-policy-arn arn:aws:iam::aws:policy/AmazonEFSCSIDriverPolicy \
+  --approve \
+  --override-existing-serviceaccounts \
+  --verbose 4
+
+
+AWS_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+OIDC_ISSUER=$(aws eks describe-cluster --name cvat-test-4-12-2025   --region ap-south-1 --query "cluster.identity.oidc.issuer" --output text)
+echo "ACCOUNT=$AWS_ACCOUNT"
+echo "OIDC_ISSUER=$OIDC_ISSUER"
+# prepare OIDC ID host part (no https://)
+OIDC_HOST=${OIDC_ISSUER#https://}
+echo "OIDC_HOST=$OIDC_HOST"
+
+arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy
+
+aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy --region ap-south-1 
+
+eksctl create iamserviceaccount --name ebs-csi-controller-sa --namespace kube-system --cluster cvat-test-4-12-2025  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy --approve --role-name AmazonEKS_EBS_CSI_DriverRole
+
+
+
