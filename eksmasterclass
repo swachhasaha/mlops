@@ -482,3 +482,52 @@ aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aw
 
 
 ------------------------------------------
+
+
+ 1  curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+    2  sudo apt-get update
+    3  sudo curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    4  sudo apt-get install unzip
+    5  sudo unzip awscliv2.zip
+    6  sudo ./aws/install
+    7  aws --version
+    8  curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+    9  sudo mv /tmp/eksctl /usr/local/bin
+   10  eksctl version
+   11  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+   12  sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+   13  kubectl version --client
+   14  aws configure
+   15  eksctl create cluster --name cvat-prod-5-2025 --region ap-south-1 --version 1.34 --nodegroup-name linux-nodes --node-type m7i-flex.large --nodes 1 --node-volume-size 100
+   16  git clone https://github.com/cvat-ai/cvat.git
+   17  cd cvat/
+   18  cd helm-chart/
+   19  ls
+   20  vi values.yaml
+   21  vi pv-ebs-backendata.yaml
+   22  vi pv-ebs-kvrocks.yaml
+   23  vi pv-ebs-clickhouse.yaml
+   24  vi pv-ebs-postgres.yaml
+   25  vi pv-ebs-redis.yaml
+   26  vi ebs-sc-gp3.yaml
+   27  kubectl create ns dev
+   28  kubectl apply -f ebs-sc-gp3.yaml -n dev
+   29  cd ..
+   30  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   31  cd helm-chart/
+   32  helm dependency build
+   33  cd ..
+   34  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   35  kubectl get pvc -n dev
+   36  kubectl edit pvc data-cvat-test-clickhouse-shard0-0 -n dev
+   37  kubectl edit pvc data-cvat-test-postgresql-0 -n dev
+   38  kubectl edit pvc redis-data-cvat-test-redis-master-0 -n dev
+   39  export CLUSTER_NAME=cvat-prod-5-2025
+   40  export AWS_REGION=ap-south-1
+   41  eksctl utils associate-iam-oidc-provider   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --approve
+   42  export ROLE_NAME=AmazonEKS_EBS_CSI_DriverRole
+   43  eksctl create iamserviceaccount   --name ebs-csi-controller-sa   --namespace kube-system   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --role-name ${ROLE_NAME}   --role-only   --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy   --approve
+   44  aws iam get-role --role-name ${ROLE_NAME}   --query 'Role.Arn' --output text
+   45  export SERVICE_ACCOUNT_ROLE_ARN=arn:aws:iam::570814989366:role/AmazonEKS_EBS_CSI_DriverRole
+   46  eksctl create addon   --name aws-ebs-csi-driver   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
+   47  kubectl get pods -n kube-system -l app=ebs-csi-controller
