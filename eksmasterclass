@@ -531,3 +531,185 @@ aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn arn:aws:iam::aw
    45  export SERVICE_ACCOUNT_ROLE_ARN=arn:aws:iam::570814989366:role/AmazonEKS_EBS_CSI_DriverRole
    46  eksctl create addon   --name aws-ebs-csi-driver   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
    47  kubectl get pods -n kube-system -l app=ebs-csi-controller
+
+Here’s a simple gp3 EBS StorageClass for Kubernetes:
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-sc-gp3
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  fsType: ext4
+  # Optional gp3 performance tuning (uncomment if you want custom values)
+  # iops: "3000"        # default is 3000
+  # throughput: "125"   # default is 125 MiB/s
+
+
+You can apply it with:
+
+kubectl apply -f ebs-sc-gp3-sc.yaml
+
+
+Then use it in a PVC like:
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-gp3-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ebs-sc-gp3
+  resources:
+    requests:
+      storage: 20Gi
+
+
+If you want I can tailor it for io2, encrypted volumes, or specific AZs next.
+
+You said:
+command install ebs csi and iam role step by step in eks
+ChatGPT said:
+Thought for 21s
+
+Here’s a clean step-by-step with commands to create the IAM role (IRSA) and install the EBS CSI driver add-on on EKS using eksctl + awscli.
+
+I’ll assume you already have: aws, kubectl, and eksctl configured and your EKS cluster is running.
+
+0. Set some variables
+export CLUSTER_NAME=my-cluster       # <-- change
+export AWS_REGION=ap-south-1         # <-- change to your region
+
+1. Enable IAM OIDC provider for the cluster (required for IRSA)
+eksctl utils associate-iam-oidc-provider \
+  --cluster ${CLUSTER_NAME} \
+  --region ${AWS_REGION} \
+  --approve
+
+
+This links your cluster to an IAM OIDC provider so service accounts can assume IAM roles. 
+AWS Documentation
++1
+
+2. Create IAM Role for EBS CSI driver (IRSA)
+
+AWS has a managed policy AmazonEBSCSIDriverPolicy that we’ll attach to a role using eksctl create iamserviceaccount. 
+AWS Documentation
+
+export ROLE_NAME=AmazonEKS_EBS_CSI_DriverRole
+
+eksctl create iamserviceaccount \
+  --name ebs-csi-controller-sa \
+  --namespace kube-system \
+  --cluster ${CLUSTER_NAME} \
+  --region ${AWS_REGION} \
+  --role-name ${ROLE_NAME} \
+  --role-only \
+  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+  --approve
+
+
+This command does three things:
+
+Creates an IAM role ${ROLE_NAME}.
+
+Configures the trust policy so that the ebs-csi-controller-sa service account in kube-system can assume it (IRSA).
+
+Doesn’t actually create the Kubernetes service account yet because of --role-only – that will be handled by the add-on. 
+AWS Documentation
+
+Now grab the role ARN (needed in next step):
+
+aws iam get-role --role-name ${ROLE_NAME} \
+  --query 'Role.Arn' --output text
+
+
+Save that output as:
+
+export SERVICE_ACCOUNT_ROLE_ARN=<output-from-above>
+
+3. Install the aws-ebs-csi-driver EKS add-on
+Option A – via eksctl (nice and simple)
+eksctl create addon \
+  --name aws-ebs-csi-driver \
+  --cluster ${CLUSTER_NAME} \
+  --region ${AWS_REGION} \
+  --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN} \
+  --force
+
+
+--force is handy if you re-run the command or had a previous install. 
+Kubecost
++1
+
+Option B – via aws eks CLI (if you prefer AWS CLI)
+aws eks create-addon \
+  --cluster-name ${CLUSTER_NAME} \
+  --region ${AWS_REGION} \
+  --addon-name aws-ebs-csi-driver \
+  --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}
+
+
+If you already had some resources that conflict, add:
+
+  --resolve-conflicts OVERWRITE
+
+
+Amazon Web Services, Inc.
++1
+
+4. Verify that the driver is running
+
+Check controller pods:
+
+kubectl get pods -n kube-system -l app=ebs-csi-controller
+
+
+You should see something like:
+
+NAME                                   READY   STATUS    RESTARTS   AGE
+ebs-csi-controller-xxxxxxxxxx-xxxxx    5/5     Running   0          2m
+
+
+Check the node daemonset too:
+
+kubectl get ds -n kube-system -l app=ebs-csi-node
+
+5. (Optional) Create a gp3 StorageClass
+
+You already asked earlier, but here’s the quick one wired for the EBS CSI driver:
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-sc-gp3
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+parameters:
+  type: gp3
+  fsType: ext4
+
+
+Apply:
+
+kubectl apply -f ebs-sc-gp3.yaml
+
+
+Then test with a PVC:
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-gp3-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ebs-sc-gp3
+  resources:
+    requests:
+      storage: 20Gi
