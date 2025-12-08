@@ -713,3 +713,81 @@ spec:
   resources:
     requests:
       storage: 20Gi
+
+
+-----------------------------------
+
+
+ 1  clear
+    2  git clone https://github.com/cvat-ai/cvat.git
+    3  cd cvat/
+    4  ls -lrt
+    5  cd helm-chart/
+    6  vi ebs-sc-gp3-sc.yaml
+    7  clear
+    8  ls
+    9  vi values.yaml
+   10  kubectl get sc
+   11  kubectl apply -f ebs-sc-gp3-sc.yaml
+   12  kubectl create ns dev
+   13  cd ..
+   14  helm upgrade -n dev dev-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   15  cd helm-chart/
+   16  helm dependency build
+   17  cd ..
+   18  helm upgrade -n dev dev-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   19  kubectl get pvs -n dev
+   20  kubectl get pvc -n dev
+   21  kubectl edit pvc data-dev-test-clickhouse-shard0-0 -n dev
+   22  kubectl edit pvc data-dev-test-postgresql-0 -n dev
+   23  kubectl edit pvc redis-data-dev-test-redis-master-0 -n dev
+   24  export CLUSTER_NAME=cvat-ultimate-8-12-2025
+   25  export AWS_REGION=ap-south-1
+   26  eksctl utils associate-iam-oidc-provider   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --approve
+   27  export ROLE_NAME=AmazonEKS_EBS_CSI_DriverRole
+   28  eksctl create iamserviceaccount   --name ebs-csi-controller-sa   --namespace kube-system   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --role-name ${ROLE_NAME}   --role-only   --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy   --approve
+   29  aws iam get-role --role-name ${ROLE_NAME}   --query 'Role.Arn' --output text
+   30  export SERVICE_ACCOUNT_ROLE_ARN=arn:aws:iam::570814989366:role/AmazonEKS_EBS_CSI_DriverRole
+   31  eksctl create addon   --name aws-ebs-csi-driver   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
+   32  kubectl get pods -n kube-system -l app=ebs-csi-controller
+   33  eksctl create addon   --name aws-ebs-csi-driver   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
+   34  eksctl utils migrate-to-pod-identity
+   35  eksctl create addon   --name aws-ebs-csi-driver   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
+   36  aws eks create-addon   --cluster-name ${CLUSTER_NAME}   --region ${AWS_REGION}   --addon-name aws-ebs-csi-driver   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}
+   37  eksctl create addon   --name aws-ebs-csi-driver   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
+   38  aws iam create-role   --role-name AmazonEKS_EBS_CSI_DriverRole   --assume-role-policy-document file://trust-policy.json
+   39  vi trust-policy.json
+   40  aws iam create-role   --role-name AmazonEKS_EBS_CSI_DriverRole   --assume-role-policy-document file://trust-policy.json
+   41  aws iam attach-role-policy   --role-name AmazonEKS_EBS_CSI_DriverRole   --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEKS_EBS_CSI_DriverPolicy
+   42  aws iam get-role --role-name AmazonEKS_EBS_CSI_DriverRole   --query "Role.Arn"   --output text
+   43  eksctl create addon   --name aws-ebs-csi-driver   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --service-account-role-arn arn:aws:iam::157298730309:role/AmazonEKS_EBS_CSI_DriverRole   --force
+   44  eksctl utils migrate-to-pod-identity --cluster ${CLUSTER_NAME} --region ${AWS_REGION}
+   45  kubectl get pods -n kube-system -l app=ebs-csi-controller
+   46  kubectl get pvc -n dev
+   47  kubectl get pods -n dev
+   48  kubectl describe pods dev-test-backend-server-c9f89f758-dvk2j -n dev
+   49  kubectl get pods -n dev
+   50  kubectl delete pods dev-test-opa-7ffcf56c77-gndvc -n dev
+   51  kubectl get pods -n dev
+   52  kubectl delete pods dev-test-backend-initializer-r1-42pgr -n dev
+   53  kubectl delete pods dev-test-backend-server-c9f89f758-dvk2j -n dev
+   54  kubectl get pods -n dev
+   55  kubectl describe pods dev-test-backend-server-c9f89f758-v2hld -n dev
+   56  kubectl get pods -n dev
+   57  kubectl get svc -n dev
+   58  kubectl edit  svc dev-test-frontend-service -n dev
+   59  kubectl get svc -n dev
+   60  kubectl get pods -n dev
+   61  kubectl describe pods dev-test-backend-worker-annotation-67ccbbf484-jh7n2 -n dev
+   62  kubectl delete pods dev-test-backend-worker-annotation-67ccbbf484-jh7n2 -n dev
+   63  kubectl describe pods dev-test-backend-worker-annotation-67ccbbf484-jh7n2 -n dev
+   64  kubectl describe pods dev-test-backend-worker-annotation -n dev
+   65  kubectl get pods -n dev
+   66  kubectl delete pods dev-test-backend-worker-annotation-67ccbbf484-jh7n2 -n dev
+   67  kubectl get pods -n dev
+   68  kubectl get svc -n dev
+   69  kubectl get pods -n dev
+   70  kubectl describe pod dev-test-backend-server-c9f89f758-v2hld -n dev
+   71  kubectl get pods -n dev
+   72  history
+ubuntu@ip-172-31-32-110:~/cvat$
