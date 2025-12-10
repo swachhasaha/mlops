@@ -791,3 +791,91 @@ spec:
    71  kubectl get pods -n dev
    72  history
 ubuntu@ip-172-31-32-110:~/cvat$
+
+
+  49  kubectl get ingress -n dev
+   50  kubectl describe ingress cvat-test -n dev
+   51  kubectl log ingress cvat-test -n dev
+   52  kubectl logs ingress cvat-test -n dev
+   53  kubectl get pods -n dev
+   54  kubectl get svc -n dev
+   55  kubectl edit svc cvat-test-frontend-service -n dev
+   56  kubectl get ingress -n dev
+   57  kubectl describe ingress cvat-test -n dev
+   58  kubectl get deployment -n kube-system aws-load-balancer-controller
+   59  kubectl apply -k "github.com/aws/eks-charts/stable/aws-load-balancer-controller//crds?ref=master"
+   60  helm repo add eks https://aws.github.io/eks-charts
+   61  helm install aws-load-balancer-controller eks/aws-load-balancer-controller --set clusterName=cvat-eks-prod-2025 -n kube-system
+   62  kubectl get deployment -n kube-system aws-load-balancer-controller
+   63  kubectl get ingress -n dev
+   64  kubectl get deployment -n kube-system aws-load-balancer-controller
+   65  kubectl get ingress -n dev
+   66  cd helm-chart/
+   67  ls
+   68  kubectl get ingress -n dev
+   69  helm list -n dev
+   70  helm uninstall cvat-test -n dev
+   71  cd ..
+   72  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   73  kubectl get ingress -n dev
+   74  kubectl get deployment -n kube-system aws-load-balancer-controller
+   75  kubectl get ingressclass
+   76  kubectl get ingress -n dev
+   77  aws eks list-clusters
+   78  export CLUSTER_NAME=cvat-eks-prod-2025
+   79  aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.resourcesVpcConfig.subnetIds" --output text
+   80  kubectl logs -n kube-system deployment/aws-load-balancer-controller | grep cvat-test | head -20
+   81  kubectl logs -n kube-system deployment.apps/aws-load-balancer-controller
+   82  vi iam-policy-alb-controller.json
+   83  aws iam create-policy   --policy-name AWSLoadBalancerControllerIAMPolicy   --policy-document file://iam-policy-alb-controller.json
+   84  aws iam create-policy   --policy-name AWSLoadBalancerControllerIAMPolicy   --policy-document iam-policy-alb-controller.json
+   85  vi iam-policy-alb-controller.json
+   86  eksctl create iamserviceaccount   --cluster cvat-eks-prod-2025   --namespace kube-system   --name EKS-alb-balancer    --attach-policy-arn arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --approve
+   87  eksctl create iamserviceaccount   --cluster cvat-eks-prod-2025   --namespace kube-system   --name eks-alb-balancer    --attach-policy-arn arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --approve
+   88  eksctl create iamserviceaccount   --cluster cvat-eks-prod-2025   --namespace kube-system   --name aws-load-balancer-controller    --attach-policy-arn arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --approve
+   89  kubectl rollout restart deployment aws-load-balancer-controller -n kube-system
+   90  kubectl get ingress -n dev
+   91  kubectl logs -n kube-system deployment.apps/aws-load-balancer-controller
+   92  kubectl get serviceaccounts -A
+   93  kubectl get sa -n dev
+   94  kubectl get sa -n kube-system
+   95  kubectl delete sa aws-load-balancer-controller -n kube-system
+   96  eksctl create iamserviceaccount   --cluster cvat-eks-prod-2025   --namespace kube-system   --name aws-load-balancer-controller    --attach-policy-arn arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --approve
+   97  helm install aws-load-balancer-controller eks/aws-load-balancer-controller --set clusterName=my-cluster -n kube-system --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller
+   98  helm list -n dev
+   99  helm uninstall aws-load-balancer-controller -n kube-system
+  100  helm install aws-load-balancer-controller eks/aws-load-balancer-controller --set clusterName=cvat-eks-prod-2025 -n kube-system --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller
+  101  helm get ingress -n dev
+  102  kubectl get ingress -n dev
+  103  history
+  104  kubectl get ingressclass
+  105  kubectl get ingress -n dev
+  106  kubectl get ingressclass
+  107  cd helm-chart/
+  108  vi values.yaml
+  109  kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+  110  kubectl get pods -n kube-system
+  111  helm uninstall aws-load-balancer-controller -n kube-system
+  112  eksctl create iamserviceaccount   --cluster cvat-eks-prod-2025   --namespace kube-system   --name aws-load-balancer-controller   --attach-policy-arn arn:aws:iam::157298730309:policy/EKS-alb-balancer   --approve
+  113  helm repo add eks https://aws.github.io/eks-charts
+  114  helm repo update
+  115  helm install aws-load-balancer-controller eks/aws-load-balancer-controller   -n kube-system   --set clusterName=cvat-eks-prod-2025   --set region=ap-south-1   --set vpcId=vpc-0261832bad66fa49c   --set serviceAccount.create=false   --set serviceAccount.name=aws-load-balancer-controller
+  116  kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+  117  kubectl get sa -n kube-system | grep aws-load-balancer-controller
+  118  kubectl get sa -n kube-system
+  119  eksctl create iamserviceaccount   --cluster cvat-eks-prod-2025   --namespace kube-system   --name aws-load-balancer-controller   --attach-policy-arn arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --approve
+  120  eksctl create iamserviceaccount   --cluster cvat-eks-prod-2025   --namespace kube-system   --name aws-load-balancer-controller   --attach-policy-arn arn:aws:iam::157298730309:policy/EKS-alb-balancer   --approve
+  121  eksctl create iamserviceaccount   --cluster cvat-eks-prod-2025   --namespace kube-system   --name aws-load-balancer-controller   --attach-policy-arn arn:aws:iam::157298730309:policy/EKS-alb-balancer   --approve --force
+  122  kubectl get sa -n kube-system
+  123  kubectl get sa -n kube-system |grep controller
+  124  kubectl get sa -n kube-system | grep aws-load-balancer-controller
+  125*
+  126  helm uninstall cvat-test -n dev
+  127  cd ..
+  128  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  129  helm install -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  130  helm install -n dev cvat-test  ./helm-chart -f ./helm-chart/values.yaml
+  131  helm install -n dev cvat-test1  ./helm-chart -f ./helm-chart/values.yaml
+  132  helm upgrade -n prod cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  133  history
+ubuntu@ip-172-31-45-70:~/cvat$
