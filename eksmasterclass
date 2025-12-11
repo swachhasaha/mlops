@@ -879,3 +879,153 @@ ubuntu@ip-172-31-32-110:~/cvat$
   132  helm upgrade -n prod cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
   133  history
 ubuntu@ip-172-31-45-70:~/cvat$
+
+-----------------------------
+
+
+ingress:
+  ## @param ingress.enabled Enable ingress resource generation for CVAT
+  ##
+  enabled: true
+  ## @param ingress.hostname Host for the ingress resource
+  ##
+  hostname: ""
+  ## @param ingress.annotations Additional annotations for the Ingress resource.
+  ##
+  ## e.g:
+  annotations:
+     kubernetes.io/ingress.class: traefik
+     traefik.ingress.kubernetes.io/router.entrypoints: web
+  ##
+  ## annotations: {}
+  ## @param ingress.className IngressClass that will be used to implement the Ingress (Kubernetes 1.18+)
+  ## This is supported in Kubernetes 1.18+ and required if you have more than one IngressClass marked as the default for your cluster
+  ## ref: https://kubernetes.io/blog/2020/04/02/improvements-to-the-ingress-api-in-kubernetes-1.18/
+  ##
+  className: "traefik"
+  ## @param ingress.tls Enable TLS configuration for the host defined at `ingress.hostname` parameter
+  ## TLS certificates will be retrieved from a TLS secret defined in tlsSecretName parameter
+  ##
+  tls: false
+  ## @param ingress.tlsSecretName Specifies the name of the secret containing TLS certificates. Ignored if ingress.tls is false
+  ##
+  tlsSecretName: ingress-tls-cvat
+
+traefik:
+  enabled: true
+  service:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+
+  logs:
+    general:
+      format: json
+    access:
+      enabled: true
+      format: json
+      fields:
+        general:
+          defaultmode: drop
+          names:
+            ClientHost: keep
+            DownstreamContentSize: keep
+            DownstreamStatus: keep
+            Duration: keep
+            RequestHost: keep
+            RequestMethod: keep
+            RequestPath: keep
+            RequestPort: keep
+            RequestProtocol: keep
+            RouterName: keep
+            StartUTC: keep
+  providers:
+    kubernetesIngress:
+      allowEmptyServices: true
+
+smokescreen:
+  opts: ''
+ubuntu@ip-172-31-37-1:~/cvat/helm-chart$
+
+-------------------------------------------
+
+ubuntu@ip-172-31-37-1:~/cvat/helm-chart/templates$ cat ingressroute.yaml
+{{- $fullName := include "cvat.fullname" . -}}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  entryPoints:
+    - web
+
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/api`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/admin`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/static`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/django-rq`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/git`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/opencv`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/profiler`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    # Catch-all route for frontend
+    - kind: Rule
+      match: PathPrefix(`/`)
+      services:
+        - name: {{ $.Release.Name }}-frontend-service
+          port: 8000
+
+
+------------------------------
+
+
+ubuntu@ip-172-31-37-1:~/cvat/helm-chart$ cat values.override.yaml
+postgresql:
+  enabled: false
+  external:
+    host: database-2.c9ocgyagy8sj.ap-south-1.rds.amazonaws.com
+    port: 5432
+  auth:
+    username: postgres
+    database: postgres
+  secret:
+    password: postgres54321
+
+ubuntu@ip-172-31-37-1:~/cvat/helm-chart$
+
+
+
