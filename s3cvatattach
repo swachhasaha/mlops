@@ -1,0 +1,248 @@
+ubuntu@ip-172-31-39-13:~/cvat$ history
+    1  clear
+    2  curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+    3  sudo apt-get update
+    4  sudo curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    5  sudo apt-get install unzip
+    6  sudo unzip awscliv2.zip
+    7  sudo ./aws/install
+    8  aws --version
+    9  curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+   10  sudo mv /tmp/eksctl /usr/local/bin
+   11  eksctl version
+   12  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+   13  sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+   14  kubectl version --client
+   15  aws configure
+   16  history
+   17  eksctl create cluster --name cvat-prod-16-12-2025 --region ap-south-1 --version 1.34 --nodegroup-name linux-nodes --node-type t3.xlarge --nodes 1 --node-volume-size 50
+   18  git clone https://github.com/cvat-ai/cvat.git
+   19  cd cvat/
+   20  cd helm-chart/
+   21  vi ebs-sc-gp3-sc.yaml
+   22  kubectl apply -f ebs-sc-gp3-sc.yaml
+   23  cd templates/
+   24  ls
+   25  vi ingressroute.yaml
+   26  cd ..
+   27  vi values.yaml
+   28  helm dependency build
+   29  export CLUSTER_NAME=cvat-prod-16-12-2025
+   30  export AWS_REGION=ap-south-1
+   31  eksctl utils associate-iam-oidc-provider   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --approve
+   32  export ROLE_NAME=AmazonEKS_EBS_CSI_DriverRole
+   33  eksctl create iamserviceaccount   --name ebs-csi-controller-sa   --namespace kube-system   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --role-name ${ROLE_NAME}   --role-only   --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy   --approve
+   34  aws iam get-role --role-name ${ROLE_NAME}   --query 'Role.Arn' --output text
+   35  export SERVICE_ACCOUNT_ROLE_ARN=arn:aws:iam::157298730309:role/AmazonEKS_EBS_CSI_DriverRole
+   36  eksctl create addon   --name aws-ebs-csi-driver   --cluster ${CLUSTER_NAME}   --region ${AWS_REGION}   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
+   37  kubectl get pods -n kube-system -l app=ebs-csi-controller
+   38  cd ..
+   39  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   40  kubectl get svc
+   41  kubectl get svc -n dev
+   42  kubectl get pvc -n dev
+   43  kubectl edit pvc data-cvat-test-clickhouse-shard0-0 -n dev
+   44  kubectl edit pvc data-cvat-test-postgresql-0 -n dev
+   45  kubectl edit pvc redis-data-cvat-test-redis-master-0 -n dev
+   46  kubectl get pvc -n dev
+   47  kubectl get pods -n dev
+   48  kubectl delete pods cvat-test-redis-master-0 -n dev
+   49  kubectl get pods -n dev
+   50  kubectl get pvc -n dev
+   51  kubectl get pods -n dev
+   52  kubectl delete pods cvat-test-opa-58cb7975ff-2fr7g -n dev
+   53  kubectl delete pods cvat-test-backend-server-775bd8c649-9q9r2 -n dev
+   54  kubectl get pods -n dev
+   55  kubectl get svc -n dev
+   56  helm list -n dev
+   57  helm uninstall cvat-test -n dev
+   58  cd helm-chart/
+   59  vi values.yaml
+   60  cd ..
+   61  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   62  kubectl get pods -n dev
+   63  kubectl get svc -n dev
+   64  helm uninstall cvat-test -n dev
+   65  cd helm-chart/
+   66  vi values.yaml
+   67  cd ..
+   68  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   69  kubectl get svc -n dev
+   70  curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.1/docs/install/iam_policy.json
+   71  aws iam create-policy \     --policy-name AWSLoadBalancerControllerIAMPolicy \     --policy-document file://iam-policy.json
+   72  aws iam create-policy --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file://iam-policy.json
+   73  eksctl create iamserviceaccount   --cluster=cvat-prod-16-12-2025   --namespace=kube-system   --name=aws-load-balancer-controller   --attach-policy-arn=arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --override-existing-serviceaccounts   --approve
+   74  kubectl get pods -n kube-system | grep load-balancer
+   75  helm repo add eks https://aws.github.io/eks-charts
+   76  helm repo update
+   77  export VPC_ID=vpc-0bdc012f9b6c5efe8
+   78  helm install aws-load-balancer-controller eks/aws-load-balancer-controller   -n kube-system   --set clusterName=${CLUSTER_NAME}   --set region=${AWS_REGION}   --set vpcId=${VPC_ID}   --set serviceAccount.create=false   --set serviceAccount.name=aws-load-balancer-controller
+   79  helm list -n dev
+   80  helm uninstall -n cvat-test
+   81  helm uninstall cvat-test -n dev
+   82  cd helm-chart/
+   83  cd templates/
+   84  ls -lrt
+   85  cd ..
+   86  vi values.yaml
+   87  cd templates/
+   88  ls
+   89  rm ingress.yaml
+   90  vi loadbalancer_ingress.yaml
+   91  less ingressroute.yaml
+   92  vi loadbalancer_ingress.yaml
+   93  cd ..
+   94  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   95  kubectl get pvc -n dev
+   96  kubectl get svc -n dev
+   97  kubectl get deployment aws-load-balancer-controller -n kube-system
+   98  kubectl logs -n kube-system deployment/aws-load-balancer-controller
+   99  kubectl get nodes
+  100  curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+  101  aws iam create-policy-version   --policy-arn arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --policy-document file://iam-policy.json   --set-as-default
+  102  kubectl rollout restart deployment aws-load-balancer-controller -n kube-system
+  103  kubectl logs -n kube-system deployment/aws-load-balancer-controller | grep -i error
+  104  kubectl logs -n kube-system deployment/aws-load-balancer-controller
+  105  kubectl get svc -n dev
+  106  kubectl get pods -n dev
+  107  kubectl get ingressroute
+  108  kubectl get ingressroute -n dev
+  109  kubectl get ingress -n dev
+  110  kubectl get svc -n dev
+  111  cd helm-chart/
+  112  kubectl edit ingress cvat-test-alb -n dev
+  113*
+  114  kubectl edit ingress cvat-test-alb -n dev
+  115  helm uninstall cvat-test -n dev
+  116  cd templates/
+  117  ls
+  118  vi loadbalancer_ingress.yaml
+  119  cd ../..
+  120  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  121  kubectl get svc -n dev
+  122  kubectl get ingress -n dev
+  123  kubectl get ingressroute -n dev
+  124  history
+  125  helm uninstall cvat-test -n dev
+  126  cd helm-chart/
+  127  cd templates/
+  128  ls
+  129  vi loadbalancer_ingress.yaml
+  130  cd ../..
+  131  helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  132  kubectl get ingress -n dev
+  133  kubectl get ingressroute -n dev
+  134  kubectl get ingress -n cvat
+  135  kubectl get pods -n cvat
+  136  kubectal get pvc -n cvat
+  137  kubectl get pvc -n cvat
+  138  helm list -n cvat
+  139  helm uninstall cvat-test -n cvat
+  140  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  141  kubectl get pvc -n dev
+  142  kubectl get pods -n dev
+  143  kubectl get ingress -n dev
+  144  kubectl get ingressroute -n dev
+  145  kubectl get svc -n dev
+  146  kubectl log cvat-test-alb -n dev
+  147  kubectl logs cvat-test-alb -n dev
+  148  kubectl logs ingress cvat-test-alb -n dev
+  149  kubectl logs  cvat-test-alb -n dev
+  150  kubectl logs ingress/cvat-test-alb -n dev
+  151  kubectl describe  ingress cvat-test-alb -n dev
+  152  helm uninstall cvat-test -n dev
+  153  cd helm-chart/
+  154  cd templates/
+  155  ls
+  156  vi loadbalancer_ingress.yaml
+  157*
+  158  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  159  kubectl get svc -n dev
+  160*
+  161  kubectl describe  ingress cvat-test-alb -n dev
+  162  helm uninstall cvat-test -n dev
+  163  cd helm-chart/
+  164  cd templates/
+  165  ls
+  166  vi loadbalancer_ingress.yaml
+  167  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  168  cd ../..
+  169  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  170  kubectl describe  ingress cvat-test-alb -n dev
+  171  helm uninstall cvat-test -n dev
+  172  cd helm-chart/
+  173  cd templates/
+  174  vi loadbalancer_ingress.yaml
+  175  cd ../..
+  176  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  177  aws s3 ls
+  178  curl -v https://s3125wweerrttt.s3.ap-south-1.amazonaws.com
+  179  aws eks describe-nodegroup   --cluster-name cvat-prod-16-12-2025   --nodegroup-name linux-nodes   --query "nodegroup.nodeRole"   --output text
+  180  curl -v https://s3125wweerrttt.s3.ap-south-1.amazonaws.com
+  181  curl -v s3://s3125wweerrttt
+  182  curl -v http://s3125wweerrttt
+  183  curl -v https://s3125wweerrttt.s3.amazonaws.com
+  184  curl -v https://s3125wweerrttt.s3.ap-south-1.amazonaws.com
+  185  vi cvat-s3-policy.json
+  186  aws iam create-policy   --policy-name CVAT-S3-Access   --policy-document file://cvat-s3-policy.json
+  187  eksctl create iamserviceaccount   --cluster cvat-prod-16-12-2025   --namespace dev   --name cvat-sa   --attach-policy-arn arn:aws:iam::157298730309:policy/CVAT-S3-Access   --approve
+  188  helm list -n dev
+  189  helm uninstall cvat-test -n dev
+  190  cd helm-chart/
+  191  vi values.yaml
+  192  cd ../..
+  193  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  194  cd cvat
+  195  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  196  kubectl get ingress -n dev
+  197  aws eks describe-cluster   --name ${CLUSTER_NAME}   --region ${AWS_REGION}   --query "cluster.identity.oidc.issuer"   --output text
+  198  aws iam list-open-id-connect-providers
+  199*
+  200  mv trust_policy.ymal trust_policy.json
+  201  aws iam attach-role-policy   --role-name CVAT-S3-Access-Role   --policy-arn arn:aws:iam::157298730309:policy/CVAT-S3-Access
+  202  vi cvat_serviceAccount.ymal
+  203  kubectl apply -f cvat_serviceAccount.ymal
+  204*
+  205  helm uninstall cvat-test -n dev
+  206  cd helm-chart/
+  207  cd templates/
+  208  ls
+  209  cd cvat_backend/
+  210  ls
+  211  ls -lrt
+  212  cd server/
+  213  ls
+  214  vi deployment.yml
+  215  cat deployment.yml
+  216  kubectl get sa -n dev
+  217  kubectl get sa -n kube-system
+  218  kubectl desribe sa default -n kube-system
+  219  kubectl describe sa default -n kube-system
+  220*
+  221  kubectl get sa -n dev
+  222  kubectl describe sa cvat-sa -n dev
+  223  kubectl describe sa cvat -n kube-system
+  224  history
+  225  vi deployment.yml
+  226  cd ..
+  227  ls
+  228  vi cvat_serviceAccount.ymal
+  229  kubectl apply -f cvat_serviceAccount.ymal -n dev
+  230  kubectl get sa -n dev
+  231  kubectl describe sa cvat -n dev
+  232  cd helm-chart/
+  233  cd templates/
+  234  cd ..
+  235  vi values.yaml
+  236  cd ..
+  237  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  238  kubectl get pods -n dev
+  239  alias k=kubectl
+  240  k get pods -n dev
+  241  k exec -it cvat-test-backend-server-5c4955cc4f-m4rbp -- env | grep -i aws
+  242  k exec -it cvat-test-backend-server-5c4955cc4f-m4rbp -- env -n dev | grep -i aws
+  243  k exec -it cvat-test-backend-server-5c4955cc4f-m4rbp -n dev -- env  | grep -i aws
+  244  k exec -it cvat-test-backend-server-5c4955cc4f-m4rbp -n dev -- aws s3 ls
+  245  k exec -it cvat-test-backend-server-5c4955cc4f-m4rbp -n dev -- bash
+  246  history
+ubuntu@ip-172-31-39-13:~/cvat$
