@@ -1027,5 +1027,107 @@ postgresql:
 
 ubuntu@ip-172-31-37-1:~/cvat/helm-chart$
 
+----------------------------------
+ 61  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   62  kubectl get pods -n dev
+   63  kubectl get svc -n dev
+   64  helm uninstall cvat-test -n dev
+   65  cd helm-chart/
+   66  vi values.yaml
+   67  cd ..
+   68  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   69  kubectl get svc -n dev
+   70  curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.1/docs/install/iam_policy.json
+   71  aws iam create-policy \     --policy-name AWSLoadBalancerControllerIAMPolicy \     --policy-document file://iam-policy.json
+   72  aws iam create-policy --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file://iam-policy.json
+   73  eksctl create iamserviceaccount   --cluster=cvat-prod-16-12-2025   --namespace=kube-system   --name=aws-load-balancer-controller   --attach-policy-arn=arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --override-existing-serviceaccounts   --approve
+   74  kubectl get pods -n kube-system | grep load-balancer
+   75  helm repo add eks https://aws.github.io/eks-charts
+   76  helm repo update
+   77  export VPC_ID=vpc-0bdc012f9b6c5efe8
+   78  helm install aws-load-balancer-controller eks/aws-load-balancer-controller   -n kube-system   --set clusterName=${CLUSTER_NAME}   --set region=${AWS_REGION}   --set vpcId=${VPC_ID}   --set serviceAccount.create=false   --set serviceAccount.name=aws-load-balancer-controller
+   79  helm list -n dev
+   80  helm uninstall -n cvat-test
+   81  helm uninstall cvat-test -n dev
+   82  cd helm-chart/
+   83  cd templates/
+   84  ls -lrt
+   85  cd ..
+   86  vi values.yaml
+   87  cd templates/
+   88  ls
+   89  rm ingress.yaml
+   90  vi loadbalancer_ingress.yaml
+   91  less ingressroute.yaml
+   92  vi loadbalancer_ingress.yaml
+   93  cd ..
+   94  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+   95  kubectl get pvc -n dev
+   96  kubectl get svc -n dev
+   97  kubectl get deployment aws-load-balancer-controller -n kube-system
+   98  kubectl logs -n kube-system deployment/aws-load-balancer-controller
+   99  kubectl get nodes
+  100  curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+  101  aws iam create-policy-version   --policy-arn arn:aws:iam::157298730309:policy/AWSLoadBalancerControllerIAMPolicy   --policy-document file://iam-policy.json   --set-as-default
+  102  kubectl rollout restart deployment aws-load-balancer-controller -n kube-system
+  103  kubectl logs -n kube-system deployment/aws-load-balancer-controller | grep -i error
+  104  kubectl logs -n kube-system deployment/aws-load-balancer-controller
+  105  kubectl get svc -n dev
+  106  kubectl get pods -n dev
+  107  kubectl get ingressroute
+  108  kubectl get ingressroute -n dev
+  109  kubectl get ingress -n dev
+  110  kubectl get svc -n dev
+  111  cd helm-chart/
+  112  kubectl edit ingress cvat-test-alb -n dev
+  113*
+  114  kubectl edit ingress cvat-test-alb -n dev
+  115  helm uninstall cvat-test -n dev
+  116  cd templates/
+  117  ls
+  118  vi loadbalancer_ingress.yaml
+  119  cd ../..
+  120  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+  121  kubectl get svc -n dev
+  122  kubectl get ingress -n dev
+  123  kubectl get ingressroute -n dev
+----------------------------------***************************---------------------------------------------
+loadbalancer_ingress.yaml
+
+{{- $fullName := include "cvat.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}-alb
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-traefik
+                port:
+                  number: 80
+
+change below in values.yaml for traefik:
+service:
+  type: ClusterIP
+curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.2.1/docs/install/iam_policy.json
+
+
+aws iam create-policy \     --policy-name AWSLoadBalancerControllerIAMPolicy1 \     --policy-document file://iam-policy.json
+ 
+eksctl create iamserviceaccount \ --cluster=<cluster-name> \ --namespace=kube-system \ --name=aws-load-balancer-controller \ --attach-policy-arn=arn:aws:iam::<AWS_ACCOUNT_ID>:policy/AWSLoadBalancerControllerIAMPolicy1 \ --override-existing-serviceaccounts \ --approve
+ 
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system --set clusterName=<cluster-name> --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller
+ 
 
 
