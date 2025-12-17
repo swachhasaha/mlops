@@ -1133,6 +1133,28 @@ to check loadbalancer controller log
 
 kubectl rollout restart deployment aws-load-balancer-controller -n kube-system
 kubectl logs -n kube-system deployment/aws-load-balancer-controller | grep -i error
+----------------------------------
+
+eksctl create iamserviceaccount \
+  --cluster cvat-prod-17-12-2025 \
+  --namespace kube-system \
+  --name s3-csi-driver-sa \
+  --attach-policy-arn arn:aws:iam::157298730309:policy/AmazonEKS_S3_CSI_Policy \
+  --approve
+  
+helm install s3-csi-driver aws-s3-csi-driver/aws-mountpoint-s3-csi-driver \
+  -n kube-system \
+  --set controller.serviceAccount.name=s3-csi-driver-sa \
+  --set node.serviceAccount.name=s3-csi-driver-sa
+
+
+helm install s3-csi-driver aws-s3-csi-driver/aws-mountpoint-s3-csi-driver \
+  -n kube-system \
+  --set controller.serviceAccount.create=false \
+  --set controller.serviceAccount.name=s3-csi-driver-sa \
+  --set node.serviceAccount.create=false \
+  --set node.serviceAccount.name=s3-csi-driver-sa
+
 
 
 
