@@ -1,0 +1,140 @@
+cvat s3 cloud storage Anonymous access (deploy cvat with ec2)
+
+Create an S3 Bucket
+
+aws s3 mb s3://cvat-image-storage --region ap-south-1
+
+cvat-s3-policy.json
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::cvat-image-storage"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::cvat-image-storage/*"
+    }
+  ]
+}
+-----------------------
+
+aws iam create-policy \
+  --policy-name CVAT-S3-Access \
+  --policy-document file://cvat-s3-policy.json
+  
+----------------------
+
+trust-policy.json
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+
+aws iam create-role \
+  --role-name CVAT-EC2-S3-Role \
+  --assume-role-policy-document file://trust-policy.json
+  
+aws iam attach-role-policy \
+  --role-name CVAT-EC2-S3-Role \
+  --policy-arn arn:aws:iam::157298730309:policy/CVAT-S3-Access
+
+  
+Attach IAM Role to EC2 Instance
+
+AWS Console →
+EC2 → Instance → Actions → Security → Modify IAM Role
+
+CVAT-EC2-S3-Role
+
+
+Verify S3 Access from EC2
+
+Inside EC2:
+
+aws sts get-caller-identity
+
+aws s3 ls s3://cvat-image-storage
+
+----------------
+
+Configure CVAT for S3 
+
+Edit CVAT docker-compose.override.yml
+
+services:
+  cvat_server:
+    environment:
+      AWS_REGION: ap-south-1
+      AWS_DEFAULT_REGION: ap-south-1
+	  
+	  
+	  
+docker compose down
+docker compose up -d
+
+
+cvat s3 cloud storage Anonymous access (deploy cvat with eks)
+
+aws s3 mb s3://cvat-public-storage --region ap-south-1
+
+aws s3api put-public-access-block \
+  --bucket cvat-public-storage \
+  --public-access-block-configuration \
+  BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false
+
+
+public-policy.json
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAnonymousReadWrite",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::cvat-public-storage",
+        "arn:aws:s3:::cvat-public-storage/*"
+      ]
+    }
+  ]
+}
+
+
+aws s3api put-bucket-policy \
+  --bucket cvat-public-storage \
+  --policy file://public-policy.json
+
+
+Verify Anonymous Access 
+Upload anonymously:
+aws s3 cp test.txt s3://cvat-public-storage/test.txt --no-sign-request
+
+Download anonymously:
+aws s3 cp s3://cvat-public-storage/test.txt ./test.txt --no-sign-request
+
