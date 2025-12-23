@@ -1,0 +1,42 @@
+On RHEL (8 / 9), Docker runs as a systemd service (dockerd).
+Here are the correct commands to update / reload Docker daemon.
+
+🔄 Reload Docker daemon config (daemon.json changed)
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+
+
+✔ Use this after editing:
+
+/etc/docker/daemon.json
+
+🔁 Restart Docker service (most common)
+sudo systemctl restart docker
+
+
+Check status:
+
+sudo systemctl status docker
+
+🔄 Reload without stopping containers (if supported)
+sudo systemctl reload docker
+
+
+⚠️ Not all Docker versions support reload — restart is safer.
+
+⬆️ Update Docker Engine (RHEL 8 / 9)
+1️⃣ Update Docker packages
+sudo dnf update docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+2️⃣ Restart Docker
+sudo systemctl restart docker
+
+🔍 Verify Docker version
+docker version
+
+🧠 Common troubleshooting
+Docker not starting?
+journalctl -u docker -xe
+
+Enable Docker on boot
+sudo systemctl enable docker
