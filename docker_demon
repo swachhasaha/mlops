@@ -64,3 +64,24 @@ services:
       # ROUTING FIX: ensure API/Admin traffic goes to the backend
       - "traefik.http.routers.cvat.rule=PathPrefix(`/api/`) || PathPrefix(`/static/`) || PathPrefix(`/admin`) || PathPrefix(`/django-rq`) || PathPrefix(`/auth/`)"
       - "traefik.http.routers.cvat.entrypoints=web"
+
+
+-----------------------
+
+
+cvat_ui:
+    container_name: cvat_ui
+    image: cvat/ui:${CVAT_VERSION:-dev}
+    restart: always
+    depends_on:
+      - cvat_server
+    labels:
+      traefik.enable: "true"
+      traefik.http.services.cvat-ui.loadbalancer.server.port: "8000"
+      # OLD (causes 404 if Host header doesn't match CVAT_HOST)
+      # traefik.http.routers.cvat-ui.rule: Host(`${CVAT_HOST:-localhost}`)
+      # NEW: match any host, any path
+      traefik.http.routers.cvat-ui.rule: PathPrefix(`/`)
+      traefik.http.routers.cvat-ui.entrypoints: web
+    networks:
+      - cvat
