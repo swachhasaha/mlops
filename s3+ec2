@@ -1,0 +1,165 @@
+import boto3
+import time
+import sys
+
+# --- Configuration Variables ---
+AWS_REGION = 'ap-south-1'
+INSTANCE_NAME = 'swachhamlops'
+AMI_ID = 'ami-02d26659fd82cf299' 
+INSTANCE_TYPE = 't3.large'
+KEY_NAME = 'mlopsinfy'
+SECURITY_GROUP_ID = 'sg-08e85a9fc9d14797a'
+IAM_ROLE_NAME = 'mlopsinfy' 
+ROOT_VOLUME_SIZE_GB = 20
+
+# S3FS Configuration (Sensitive: Hardcoded Keys)
+S3_BUCKET_NAME = 'infymlops123'
+# WARNING: Hardcoding keys here is highly discouraged. Use IAM roles for secure access.
+ACCESS_KEY_ID = 
+SECRET_ACCESS_KEY =
+# The user data script runs as root, so we use /root as the home directory.
+S3FS_PASSWD_FILE = '/root/.passwd-s3fs'
+
+# --- User Data Script (shell script to run on instance launch) ---
+USER_DATA_SCRIPT = f"""#!/bin/bash
+set -e
+
+echo "Starting system update and dependency installation..."
+sudo apt-get update -y
+# Install Docker, Git, and s3fs
+sudo apt-get install docker.io git s3fs -y 
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# --- 1. CVAT Setup ---
+echo "Installing Docker Compose..."
+sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+echo "Cloning CVAT and setting host IP..."
+git clone https://github.com/opencv/cvat
+cd cvat
+
+# Dynamically fetch the instance's Public IP address
+PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+export CVAT_HOST=$PUBLIC_IP
+
+echo "Starting CVAT with CVAT_HOST=$PUBLIC_IP"
+sudo docker-compose up -d
+
+# --- 2. S3FS Setup and Mounting ---
+echo "Configuring S3FS for bucket {S3_BUCKET_NAME}..."
+
+# Create mount directories
+sudo mkdir -p /mnt/share /mnt/share/data /mnt/share/logs
+sudo mkdir -p /mnt/{S3_BUCKET_NAME}
+
+# Create and secure the s3fs password file for the root user
+echo "{ACCESS_KEY_ID}:{SECRET_ACCESS_KEY}" > {S3FS_PASSWD_FILE}
+chmod 600 {S3FS_PASSWD_FILE}
+
+# Uncomment user_allow_other in /etc/fuse.conf (required for -o allow_other)
+sudo sed -i 's/#user_allow_other/user_allow_other/g' /etc/fuse.conf
+
+# Mount the S3 bucket with all specified options
+# NOTE: The '-f' (foreground) and '-o curldbg' flags are removed as they prevent the script from finishing.
+echo "Mounting S3 bucket {S3_BUCKET_NAME} to /mnt/{S3_BUCKET_NAME}..."
+sudo s3fs {S3_BUCKET_NAME} /mnt/{S3_BUCKET_NAME} \\
+    -o passwd_file={S3FS_PASSWD_FILE} \\
+    -o url=https://s3-ap-south-1.amazonaws.com \\
+    -o endpoint=ap-south-1 \\
+    -o use_path_request_style \\
+    -o allow_other \\
+    -o dbglevel=info \\
+    -o nonempty
+
+echo "EC2 User Data script finished executing. Check /var/log/cloud-init-output.log for logs."
+"""
+
+def create_ec2_instance():
+    """
+    Creates an EC2 instance with the specified configuration and user data script.
+    """
+    print(f"Initializing EC2 client in region: {AWS_REGION}...")
+    try:
+        ec2_client = boto3.client('ec2', region_name=AWS_REGION)
+        
+        # 1. Define Block Device Mappings for 20 GB root volume
+        block_device_mappings = [
+            {
+                'DeviceName': '/dev/sda1',
+                'Ebs': {
+                    'VolumeSize': ROOT_VOLUME_SIZE_GB,
+                    'VolumeType': 'gp2', 
+                    'DeleteOnTermination': True
+                },
+            },
+        ]
+
+        # 2. Define Network Interface
+        network_interfaces = [
+            {
+                'DeviceIndex': 0,
+                'AssociatePublicIpAddress': True, 
+                'Groups': [SECURITY_GROUP_ID],
+            }
+        ]
+
+        # 3. Launch the instance
+        print(f"Launching instance '{INSTANCE_NAME}' with User Data script...")
+        response = ec2_client.run_instances(
+            ImageId=AMI_ID,
+            InstanceType=INSTANCE_TYPE,
+            MinCount=1,
+            MaxCount=1,
+            KeyName=KEY_NAME,
+            TagSpecifications=[
+                {
+                    'ResourceType': 'instance',
+                    'Tags': [
+                        {
+                            'Key': 'Name',
+                            'Value': INSTANCE_NAME
+                        },
+                    ]
+                },
+            ],
+            UserData=USER_DATA_SCRIPT,
+            BlockDeviceMappings=block_device_mappings,
+            NetworkInterfaces=network_interfaces,
+            IamInstanceProfile={
+                'Name': IAM_ROLE_NAME
+            }
+        )
+
+        instance_id = response['Instances'][0]['InstanceId']
+        print(f"Instance requested. ID: {instance_id}")
+
+        # 4. Wait for the instance to be running
+        print("Waiting for instance to enter 'running' state (up to 10 minutes)...")
+        waiter = ec2_client.get_waiter('instance_running')
+        waiter.wait(InstanceIds=[instance_id], WaiterConfig={'Delay': 15, 'MaxAttempts': 40})
+        print("Instance is now running.")
+
+        # 5. Retrieve public IP
+        instance_details = ec2_client.describe_instances(InstanceIds=[instance_id])
+        public_ip = instance_details['Reservations'][0]['Instances'][0].get('PublicIpAddress')
+
+        if public_ip:
+            print("\n--- Success ---")
+            print(f"Instance '{INSTANCE_NAME}' created successfully!")
+            print(f"Instance ID: {instance_id}")
+            print(f"Public IP Address: {public_ip}")
+            print("\nCVAT and S3FS setup are running in the background via the User Data script.")
+            print(f"1. You can try accessing CVAT at http://{public_ip} in about 5-10 minutes.")
+            print(f"2. The S3 bucket '{S3_BUCKET_NAME}' should be mounted at /mnt/{S3_BUCKET_NAME} on the instance.")
+        else:
+            print(f"Instance created, but public IP was not assigned. Check the subnet settings for instance {instance_id}.")
+            
+    except Exception as e:
+        print("\n--- Error ---")
+        print(f"An error occurred during instance creation: {e}", file=sys.stderr)
+        print("Please check your AWS credentials, Security Group ID, AMI ID, Key Pair, and IAM Role Name.")
+
+if __name__ == '__main__':
+    create_ec2_instance()
