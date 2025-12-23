@@ -1,0 +1,93 @@
+You need a Traefik router + service that listens on the port where your AWS ALB sends traffic (8501) and forwards it to the CVAT backend port (8051) inside the EC2 instance. Below are two common ways to do this: file config and Docker labels.
+​
+
+1. Static config (entrypoint on 8501)
+Create or edit Traefik static config (for example /etc/traefik/traefik.yml):
+
+text
+entryPoints:
+  web8501:
+    address: ":8501"
+
+providers:
+  file:
+    filename: "/etc/traefik/dynamic.yml"
+    watch: true
+This entrypoint makes Traefik listen on port 8501, where your ALB target group points.
+​
+
+Restart Traefik after this change.
+
+2. Dynamic config (route 8501 → 8051)
+Create /etc/traefik/dynamic.yml:
+
+text
+http:
+  routers:
+    cvat-router:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - web8501
+      service: cvat-service
+
+  services:
+    cvat-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8051"
+Explanation:
+
+entryPoints: [web8501] binds this router to port 8501, matching the ALB target group.
+​
+
+servers.url points to the CVAT service port 8051 on the EC2 host (adjust if CVAT listens on a different address).
+​
+
+3. If you use Docker with labels
+If Traefik runs as a container with the Docker provider, you can define routing via labels instead of dynamic.yml.
+​
+
+Example docker-compose.yml for CVAT (simplified):
+
+text
+version: "3.8"
+
+services:
+  traefik:
+    image: traefik:v3.0
+    command:
+      - "--entryPoints.web8501.address=:8501"
+      - "--providers.docker=true"
+    ports:
+      - "8501:8501"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  cvat:
+    image: cvat/server:latest
+    ports:
+      - "8051:8051"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cvat-router.entrypoints=web8501"
+      - "traefik.http.routers.cvat-router.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.cvat-router.service=cvat-service"
+      - "traefik.http.services.cvat-service.loadbalancer.server.port=8051"
+This makes Traefik listen on 8501 and forward to the CVAT container’s port 8051.
+​
+
+4. Things to double-check
+ALB target group points to EC2:8501 (same as Traefik entrypoint).
+
+Traefik actually listens on 8501 (check netstat/ss or Traefik logs).
+​
+
+CVAT is reachable locally on http://127.0.0.1:8051 (or container name if Docker).
+
+If you share:
+
+whether Traefik runs as container or binary, and
+
+your existing traefik.yml / docker-compose.yml snippet,
+
+a fully tailored config for your exact setup (including HTTPS / Host rules) can be provided.
