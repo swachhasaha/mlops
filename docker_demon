@@ -40,3 +40,27 @@ journalctl -u docker -xe
 
 Enable Docker on boot
 sudo systemctl enable docker
+
+
+------docker-compose.override.yml-----------------
+
+version: '3.3'
+
+services:
+  traefik:
+    ports:
+      # CHANGE: Map Host Port 8501 -> Container Port 8080
+      - "8501:8080"
+      - "8090:8090"
+
+  cvat_ui:
+    labels:
+      # ROUTING FIX: Allow traffic from Load Balancer (ignores domain name mismatch)
+      - "traefik.http.routers.cvat-ui.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.cvat-ui.entrypoints=web"
+
+  cvat_server:
+    labels:
+      # ROUTING FIX: ensure API/Admin traffic goes to the backend
+      - "traefik.http.routers.cvat.rule=PathPrefix(`/api/`) || PathPrefix(`/static/`) || PathPrefix(`/admin`) || PathPrefix(`/django-rq`) || PathPrefix(`/auth/`)"
+      - "traefik.http.routers.cvat.entrypoints=web"
