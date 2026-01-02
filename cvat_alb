@@ -6,3 +6,13 @@ CVAT_PORT=8501
 
 SECURE_PROXY_SSL_HEADER=HTTP_X_FORWARDED_PROTO,https
 USE_X_FORWARDED_HOST=true
+
+ docker-compose.override.yml:
+
+services:
+  cvat_server:
+    environment:
+      DJANGO_ALLOWED_HOSTS: sandbox-cvat.gevernova.net
+      CSRF_TRUSTED_ORIGINS: https://sandbox-cvat.gevernova.net
+      USE_X_FORWARDED_HOST: "true"
+      SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
