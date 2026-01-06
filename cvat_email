@@ -1,0 +1,131 @@
+AWS SES
+same region as CVAT
+SMTP host (endpoint)
+SMTP username
+SMTP password
+Verify sender email/domain in SES
+Allow outbound TCP 587
+
+  An active AWS account with permissions to use Amazon SES (IAM user with SES and credential management rights).
+​
+
+Amazon SES configured in a chosen region (for you, ap-south-1/Mumbai is usually best for Kolkata).
+​
+
+At least one verified sender identity (email or domain) in SES that will be used as DEFAULT_FROM_EMAIL / SERVER_EMAIL.
+​
+
+SES SMTP credentials (SMTP username and password) generated for that region.
+​
+
+SES SMTP endpoint and port noted, for example email-smtp.<region>.amazonaws.com with port 587 or 465.
+​
+
+(Recommended) SES account moved out of Sandbox if you need to send to unverified recipient emails.
+  ---------------------------------------
+Outbound internet access
+
+EC2 / EKS nodes must allow outbound traffic on:
+
+TCP 587 (SMTP TLS) or 465 (SMTP SSL)
+
+✅ AWS Account Prerequisites
+
+Active AWS account
+
+SES available in selected region (e.g., ap-south-1)
+
+IAM permissions to:
+
+Create users
+
+Attach policies
+
+Access SES
+
+AWS SES enabled in target region
+
+Region selected should match CVAT deployment region (recommended)
+
+SES production access (important)
+
+SES must be out of sandbox
+
+Production access request approved
+
+✅ Email / Domain Prerequisites
+
+Verified email address or domain in SES
+
+At least one verified sender:
+
+noreply@yourdomain.com or
+
+Individual email (for testing)
+
+DNS access (for domain verification)
+
+Ability to add:
+
+TXT (verification)
+
+CNAME (DKIM)
+
+Via Route 53 or external DNS provider
+
+✅ IAM & Security Prerequisites
+
+IAM user or role for SES
+
+Programmatic access enabled
+
+Minimum permissions:
+
+ses:SendEmail
+
+ses:SendRawEmail
+
+SMTP credentials created
+
+SES SMTP username
+
+SES SMTP password
+
+Secure secret storage
+
+Ability to store credentials using:
+
+.env file (EC2)
+
+Kubernetes Secret
+
+AWS Secrets Manager (optional)
+
+✅ CVAT Email Configuration Prerequisites
+
+SMTP configuration details
+
+SES SMTP endpoint:
+
+email-smtp.<region>.amazonaws.com
+
+
+Port:
+
+587 (recommended)
+
+TLS enabled
+
+Environment variables supported
+
+CVAT backend supports setting:
+
+EMAIL_HOST
+
+EMAIL_PORT
+
+EMAIL_HOST_USER
+
+EMAIL_HOST_PASSWORD
+
+DEFAULT_FROM_EMAIL​
