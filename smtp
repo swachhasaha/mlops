@@ -12,3 +12,52 @@ services:
       EMAIL_HOST_USER: ""
       EMAIL_HOST_PASSWORD: ""
       DEFAULT_FROM_EMAIL: "cvat@yourdomain.com"
+
+cvat/settings/email_settings.py
+
+# Copyright (C) 2020-2022 Intel Corporation
+# Copyright (C) CVAT.ai Corporation
+#
+# SPDX-License-Identifier: MIT
+
+# Inherit parent config (usually production for deployments)
+from cvat.settings.production import * # Account Settings
+ACCOUNT_AUTHENTICATION_METHOD = "username_email"
+ACCOUNT_CONFIRM_EMAIL_ON_GET = True
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = "mandatory" # Forces users to verify email
+
+# SMTP Email Backend Settings
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+# Server Configuration
+EMAIL_HOST = "smtprelay.gevernova.net"
+EMAIL_PORT = 25
+
+# Authentication (Empty since you specified no user/pass)
+EMAIL_HOST_USER = ""
+EMAIL_HOST_PASSWORD = ""
+
+# Security Settings (Usually False for Port 25 internal relays)
+EMAIL_USE_TLS = False
+EMAIL_USE_SSL = False
+
+# Sender Address
+# IMPORTANT: Change this to a valid sender address allowed by your relay
+DEFAULT_FROM_EMAIL = "cvat-noreply@gevernova.net" 
+SERVER_EMAIL = "cvat-noreply@gevernova.net"
+
+docker-compose.yml
+
+services:
+  cvat_server:
+    environment:
+      DJANGO_SETTINGS_MODULE: "cvat.settings.email_settings"
+      # ... other variables ...
+
+  cvat_worker:
+    environment:
+      DJANGO_SETTINGS_MODULE: "cvat.settings.email_settings"
+      # ... other variables ...
+
+
