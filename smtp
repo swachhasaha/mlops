@@ -61,3 +61,24 @@ services:
       # ... other variables ...
 
 
+
+docker exec -it cvat_server bash
+Run Django shell:
+
+bash
+Copy code
+python manage.py shell
+Send a test email:
+
+python
+Copy code
+from django.core.mail import send_mail
+
+send_mail(
+    "CVAT SMTP Test",
+    "Email is working 🎉",
+    "cvat@yourdomain.com",
+    ["your_email@example.com"],
+    fail_silently=False,
+)
+
