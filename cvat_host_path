@@ -29,3 +29,9 @@ spec:
       - name: host
         hostPath:
           path: /
+
+
+--------------------
+
+
+kubectl apply -f cvat-hostpath.yaml
