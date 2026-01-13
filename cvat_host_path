@@ -42,3 +42,214 @@ sudo mkdir -p /cvat/redis
 sudo mkdir -p /cvat/logs
 sudo mkdir -p /cvat/keys
 sudo chmod -R 777 /cvat
+
+kubectl delete daemonset cvat-hostpath-init -n kube-system
+
+kubectl get nodes
+kubectl label node <node-name> cvat-node=true
+
+
+
+3️⃣ Create PersistentVolumes (PV)
+📌 CVAT DATA PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cvat-data-pv
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: cvat-hostpath
+  local:
+    path: /cvat/data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: cvat-node
+          operator: In
+          values:
+          - "true"
+
+📌 PostgreSQL PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cvat-db-pv
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: cvat-hostpath
+  local:
+    path: /cvat/db
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: cvat-node
+          operator: In
+          values:
+          - "true"
+
+📌 Redis PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cvat-redis-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: cvat-hostpath
+  local:
+    path: /cvat/redis
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: cvat-node
+          operator: In
+          values:
+          - "true"
+
+
+Apply all:
+
+kubectl apply -f pv.yaml
+
+4️⃣ Create PersistentVolumeClaims (PVC)
+📌 CVAT DATA PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cvat-data-pvc
+  namespace: cvat
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: cvat-hostpath
+  resources:
+    requests:
+      storage: 200Gi
+
+📌 PostgreSQL PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cvat-db-pvc
+  namespace: cvat
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: cvat-hostpath
+  resources:
+    requests:
+      storage: 50Gi
+
+📌 Redis PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cvat-redis-pvc
+  namespace: cvat
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: cvat-hostpath
+  resources:
+    requests:
+      storage: 10Gi
+
+
+Apply:
+
+kubectl apply -f pvc.yaml
+
+
+Check:
+
+kubectl get pv
+kubectl get pvc -n cvat
+
+
+Status should be Bound ✅
+
+5️⃣ Update CVAT values.yaml
+🔹 Disable dynamic PVCs
+global:
+  storageClass: ""
+
+🔹 CVAT Backend
+cvat:
+  backend:
+    persistence:
+      enabled: true
+      existingClaim: cvat-data-pvc
+
+🔹 CVAT Workers
+cvat:
+  worker:
+    persistence:
+      enabled: true
+      existingClaim: cvat-data-pvc
+
+🔹 PostgreSQL
+postgresql:
+  primary:
+    persistence:
+      enabled: true
+      existingClaim: cvat-db-pvc
+
+🔹 Redis
+redis:
+  master:
+    persistence:
+      enabled: true
+      existingClaim: cvat-redis-pvc
+
+6️⃣ Lock All Pods to Same Node
+nodeSelector:
+  cvat-node: "true"
+
+
+(Add globally or per service)
+
+7️⃣ Deploy CVAT
+helm install cvat cvat/cvat \
+  -n cvat --create-namespace \
+  -f values.yaml
+
+8️⃣ Verify Everything
+kubectl get pods -n cvat -o wide
+kubectl describe pvc -n cvat
+
+
+All pods must be on same node.
+
+✅ Why This Is Better Than Raw hostPath
+
+✔ Clean separation
+✔ Easy backup
+✔ Kubernetes-aware
+✔ Future migration to EBS/EFS possible
+✔ Safer than inline hostPath
+
+🚀 Want Next?
+
+I can:
+
+Convert this to EFS without data loss
+
+Add backup script for PVs
+
+Create production-ready storage layout
+
+Provide full working values.yaml
