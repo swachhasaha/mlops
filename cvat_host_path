@@ -253,3 +253,12 @@ Add backup script for PVs
 Create production-ready storage layout
 
 Provide full working values.yaml
+
+-----------------------
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: cvat-hostpath
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
