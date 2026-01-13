@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cvat-hostpath-init
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: cvat-hostpath-init
+  template:
+    metadata:
+      labels:
+        app: cvat-hostpath-init
+    spec:
+      containers:
+      - name: init
+        image: busybox
+        command:
+          - sh
+          - -c
+          - |
+            mkdir -p /host/cvat/{data,db,redis,logs,keys} && chmod -R 777 /host/cvat
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: host
+          mountPath: /host
+      volumes:
+      - name: host
+        hostPath:
+          path: /
