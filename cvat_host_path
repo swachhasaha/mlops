@@ -35,3 +35,10 @@ spec:
 
 
 kubectl apply -f cvat-hostpath.yaml
+
+sudo mkdir -p /cvat/data
+sudo mkdir -p /cvat/db
+sudo mkdir -p /cvat/redis
+sudo mkdir -p /cvat/logs
+sudo mkdir -p /cvat/keys
+sudo chmod -R 777 /cvat
