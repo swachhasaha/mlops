@@ -1,0 +1,327 @@
+ajha101099@gmail.com
+
+CVAT Image annotation tool AWS EKS set up with EFS file system
+STEP -1
+EC2 BASTION HOST SET UP 
+   1.  curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+    2.  sudo apt-get update
+    3.  sudo curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    4 . sudo apt-get install unzip
+    5.  sudo unzip awscliv2.zip
+    6.  sudo ./aws/install
+    7.  aws --version
+    8.  curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+    9.  sudo mv /tmp/eksctl /usr/local/bin
+   10.  eksctl version
+   11. curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+   12.  sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+   13.  kubectl version --client
+   14.  aws configure
+   15.  eksctl create cluster --name cvat-test-2025 --region ap-south-1 --version 1.34 --nodegroup-name linux-nodes --node-type t3.2xlarge --nodes 3 --node-volume-size 100
+NOTE:- An AWS EKS cluster with a capacity of three nodes, using EC2 instance type t3.2xlarge with 100 GB storage 
+The EKS cluster role should have the following AWS-managed policies attached:
+AmazonEKSClusterPolicy      and     AmazonEKSVPCResourceController
+ 
+STEP -2
+Git clone https://github.com/cvat-ai/cvat.git
+
+EFS configuration 
+1)	Create iamserviceaccount
+eksctl create iamserviceaccount   --name efs-csi-controller-sa   --namespace kube-system   --cluster $cluster_name   --role-name $role_name   --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy   --approve
+2)	TRUST_POLICY and Create addon
+TRUST_POLICY=$(aws iam get-role --output json --role-name $role_name --query 'Role.AssumeRolePolicyDocument' | \
+    sed -e 's/efs-csi-controller-sa/efs-csi-*/' -e 's/StringEquals/StringLike/')
+
+aws iam update-assume-role-policy --role-name $role_name --policy-document "$TRUST_POLICY"
+
+export SERVICE_ACCOUNT_ROLE_ARN=arn:aws:iam::157298730309:role/AmazonEKS_EFS_CSI_DriverRole
+eksctl create addon   --name aws-efs-csi-driver   --cluster $cluster_name   --region ap-south-1   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
+
+Create custom storage class 
+efs-sc.yaml
+-----------------------------
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: fs-02945ccfd93dae06a
+  directoryPerms: "700"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+kubectl apply -f  efs-sc.yaml
+
+NOTE:
+  1)security group of  EFS must be add EFS port 2049 of EKS security group
+  2) A Kubernetes service account configured with IRSA (IAM Role for Service Account), using the AWS-managed policy AmazonEFSCSIDriverPolicy, with permissions to create the aws-efs-csi-driver add-on
+3) One EFS file system created in the same VPC as the EKS cluster:
+ 4)   Security group inbound rule allowing traffic on port 2049 from the EKS cluster security group.
+5)	Dynamic access point creation in EFS should be allowed from EKS.
+S3 ACCESS
+1)	S3 bucket connectivity should be enabled for the EKS cluster
+RDS CONNECTIVITY 
+1)	An RDS PostgreSQL database configured to allow connectivity from the EKS cluster:
+2)	The RDS security group should permit access from the EKS cluster security group.
+3)	The RDS instance should reside in the same VPC as the EKS cluster.
+
+
+Load Balancer
+Application Load Balancer required with Target port 8080 to access the application 
+AWS simple email service
+IAM user with Amazon SES and credential management rights
+Amazon SES configured in a same  region as CVAT
+one verified sender identity (email or domain) in SES that will be used as DEFAULT_FROM_EMAIL / SERVER_EMAIL.
+SES SMTP credentials (SMTP username and password) generated for that region.
+SES SMTP endpoint and port
+EKS nodes must allow outbound traffic on: TCP 587 (SMTP TLS) or 465 (SMTP SSL)
+
+Step to Deploy  the application with helm chart
+1	helm dependency build
+2	helm upgrade -n <desired_namespace> <release_name> -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+
+
+-----------------------------------------------------------
+Cluster Autoscaler on AWS
+
+step 1 create IAM policy 
+step 2 create IAM Role using above IAM policy with EKS cluster OICD ID and add service account name in trust relationship
+
+step 3 create service account
+IAM Policy
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeAutoScalingInstances",
+        "autoscaling:DescribeLaunchConfigurations",
+        "autoscaling:DescribeScalingActivities",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeLaunchTemplateVersions",
+        "ec2:GetInstanceTypesFromInstanceRequirements",
+        "eks:DescribeNodegroup"
+      ],
+      "Resource": ["*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup"
+      ],
+      "Resource": ["*"]
+    }
+  ]
+}
+----------------------------------------------------------------------------------
+Service account creation
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    k8s-addon: cluster-autoscaler.addons.k8s.io
+    k8s-app: cluster-autoscaler
+  annotations:
+    <YOUR IAM ROLE ARN >
+  name: cluster-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-autoscaler
+  labels:
+    k8s-addon: cluster-autoscaler.addons.k8s.io
+    k8s-app: cluster-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["events", "endpoints"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    resourceNames: ["cluster-autoscaler"]
+    verbs: ["get", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["watch", "list", "get", "update"]
+  - apiGroups: [""]
+    resources:
+      - "namespaces"
+      - "pods"
+      - "services"
+      - "replicationcontrollers"
+      - "persistentvolumeclaims"
+      - "persistentvolumes"
+    verbs: ["watch", "list", "get"]
+  - apiGroups: ["extensions"]
+    resources: ["replicasets", "daemonsets"]
+    verbs: ["watch", "list", "get"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["watch", "list"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets", "replicasets", "daemonsets"]
+    verbs: ["watch", "list", "get"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities", "volumeattachments"]
+    verbs: ["watch", "list", "get"]
+  - apiGroups: ["batch", "extensions"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["create"]
+  - apiGroups: ["coordination.k8s.io"]
+    resourceNames: ["cluster-autoscaler"]
+    resources: ["leases"]
+    verbs: ["get", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    k8s-addon: cluster-autoscaler.addons.k8s.io
+    k8s-app: cluster-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["cluster-autoscaler-status", "cluster-autoscaler-priority-expander"]
+    verbs: ["delete", "get", "update", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-autoscaler
+  labels:
+    k8s-addon: cluster-autoscaler.addons.k8s.io
+    k8s-app: cluster-autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: cluster-autoscaler
+    namespace: kube-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    k8s-addon: cluster-autoscaler.addons.k8s.io
+    k8s-app: cluster-autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cluster-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: cluster-autoscaler
+    namespace: kube-system
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    app: cluster-autoscaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '8085'
+    spec:
+      priorityClassName: system-cluster-critical
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: cluster-autoscaler
+      containers:
+        - image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.32.1
+          name: cluster-autoscaler
+          resources:
+            limits:
+              cpu: 100m
+              memory: 600Mi
+            requests:
+              cpu: 100m
+              memory: 600Mi
+          command:
+            - ./cluster-autoscaler
+            - --v=4
+            - --stderrthreshold=info
+            - --cloud-provider=aws
+            - --skip-nodes-with-local-storage=false
+            - --expander=least-waste
+            - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/<YOUR CLUSTER NAME>
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs/ca-certificates.crt # /etc/ssl/certs/ca-bundle.crt for Amazon Linux Worker Nodes
+              readOnly: true
+          imagePullPolicy: "Always"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: ssl-certs
+          hostPath:
+            path: "/etc/ssl/certs/ca-bundle.crt"
+			
+			
+			
+			
+			
+			
+			
+references
+https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md
+
+
+
+
+
+
+
+
+
+
