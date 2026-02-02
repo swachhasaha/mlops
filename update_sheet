@@ -1,4 +1,4 @@
-ajha101099@gmail.com
+
 
 CVAT Image annotation tool AWS EKS set up with EFS file system
 STEP -1
@@ -85,6 +85,338 @@ Step to Deploy  the application with helm chart
 2	helm upgrade -n <desired_namespace> <release_name> -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
 
 
+-----------EFS in details------------
+
+export cluster_name=cvat-test-19-12-2025
+export role_name=AmazonEKS_EFS_CSI_DriverRole
+eksctl utils associate-iam-oidc-provider --cluster='cvat-test-19-12-2025' --approve
+eksctl create iamserviceaccount   --name efs-csi-controller-sa   --namespace kube-system   --cluster $cluster_name   --role-name $role_name   --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy   --approve   --override-existing-serviceaccounts
+
+
+# to delete SA:
+# eksctl delete iamserviceaccount efs-csi-controller-sa --cluster $cluster_name --namespace kube-system
+
+TRUST_POLICY=$(aws iam get-role --output json --role-name $role_name --query 'Role.AssumeRolePolicyDocument' | \
+    sed -e 's/efs-csi-controller-sa/efs-csi-*/' -e 's/StringEquals/StringLike/')
+
+aws iam update-assume-role-policy --role-name $role_name --policy-document "$TRUST_POLICY"
+
+####### eksctl create addon --name aws-efs-csi-driver --cluster $cluster_name --region ap-south-1
+
+# aws eks delete-addon --cluster-name $cluster_name --addon-name aws-efs-csi-driver
+
+# aws cloudformation delete-stack \
+#   --stack-name eksctl-cvat-prod-18-12-2025-addon-aws-efs-csi-driver \
+#   --region ap-south-1
+
+export SERVICE_ACCOUNT_ROLE_ARN=arn:aws:iam::157298730309:role/AmazonEKS_EFS_CSI_DriverRole
+eksctl create addon   --name aws-efs-csi-driver   --cluster $cluster_name   --region ap-south-1   --service-account-role-arn ${SERVICE_ACCOUNT_ROLE_ARN}   --force
+
+
+# Run to confirm driver is installed:
+# k get pods -n kube-system
+
+# efs-sc.yaml
+================================================
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: fs-02945ccfd93dae06a
+  directoryPerms: "700"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+ 
+
+=================================================
+
+Add this line if nessary 
+ 
+ 
+
+security group efs must be add 2049 of eks security group 
+> kubectl apply -f efs-sc.yaml
+
+
+=======do necessary changes in value.yaml ===========
+
+
+**************** deletet cluster ********************************
+
+eksctl delete cluster $cluster_name
+=======================================
+
+storageClassName: efs-sc
+
+helm dependency build
+==========================================================
+everytime when anything is changed in helm-chart folder run:
+============================================================
+ helm uninstall cvat-test -n dev
+ helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml
+
+#  helm upgrade -n dev cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml -f ./helm-chart/values.override.yaml
+
+# apt-get update && apt-get install postgresql-client -y
+# psql -h postgres.c9ocgyagy8sj.ap-south-1.rds.amazonaws.com \
+#      -U postgres \
+#      -d postgres \
+#      -p 5432
+
+
+
+to test EFS mount inside ec2 
+
+cd /mnt/efs/fs1
+
+
+sudo useradd -u 50009 efsuser
+sudo groupadd -g 50009 efsgroup
+sudo usermod -g 50009 efsuser
+sudo su - efsuser
+
+
+
+
+
+
+
+============ S3 SETUP ==========================
+
+s3.json policy:
+{
+   "Version": "2012-10-17",
+   "Statement": [
+        {
+            "Sid": "MountpointFullBucketAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::cvat-bucket-test-gev"
+            ]
+        },
+        {
+            "Sid": "MountpointFullObjectAccess",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:AbortMultipartUpload",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::cvat-bucket-test-gev/*"
+            ]
+        }
+   ]
+}
+
+
+ aws iam create-policy --policy-name AmazonS3CSIDriverPolicy --policy-document file://s3.json
+
+
+# to get OIDC ID
+
+aws eks describe-cluster \
+  --name cvat-prod-18-12-2025 \
+  --region ap-south-1 \
+  --query "cluster.identity.oidc.issuer" \
+  --output text
+
+
+# aws iam list-open-id-connect-providers
+# trust-policy.json
+# ------------------------
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Federated": "arn:aws:iam::157298730309:oidc-provider/oidc.eks.ap-south-1.amazonaws.com/id/3A7CA1C29A1E04DA41A4F3C026F4E49B"
+        },
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+          "StringLike": {
+            "oidc.eks.ap-south-1.amazonaws.com/id/3A7CA1C29A1E04DA41A4F3C026F4E49B:sub": "system:serviceaccount:kube-system:s3-csi-*",
+            "oidc.eks.ap-south-1.amazonaws.com/id/3A7CA1C29A1E04DA41A4F3C026F4E49B:aud": "sts.amazonaws.com"
+          }
+        }
+      }
+    ]
+}
+aws iam create-role --role-name AmazonEKS_S3_CSI_DriverRole  --assume-role-policy-document file://"trust-policy.json"
+
+aws iam attach-role-policy  --policy-arn arn:aws:iam::157298730309:policy/AmazonS3CSIDriverPolicy --role-name AmazonEKS_S3_CSI_DriverRole
+
+
+aws eks  create-addon --cluster-name cvat-prod-18-12-2025 --addon-name aws-mountpoint-s3-csi-driver --service-account-role-arn arn:aws:iam::157298730309:role/AmazonEKS_S3_CSI_DriverRole
+
+
+
+# helm uninstall cvat-test2 -n dev2
+helm upgrade -n dev2 cvat-test2 -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml -f ./helm-chart/values.override.yaml
+
+
+
+# PV FOR S3_bucket
+# pv_backend.yml
+=====================
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: s3-pv-backend
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  mountOptions:
+    - allow-delete
+    - allow-other
+    - uid=1000
+    - gid=1000
+    - region=ap-south-1
+  csi:
+    driver: s3.csi.aws.com
+    volumeHandle: s3-csi-driver-volume
+    volumeAttributes:
+      bucketName: cvat-bucket-test-gev
+
+
+
+
+# pv_kvrocks.yml
+=====================
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: s3-pv-kvrocks
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  mountOptions:
+    - allow-delete
+    - allow-other
+    - uid=1000
+    - gid=1000
+    - region=ap-south-1
+  csi:
+    driver: s3.csi.aws.com
+    volumeHandle: s3-csi-driver-volume
+    volumeAttributes:
+      bucketName: cvat-bucket-test-gev
+
+
+# pv_redis.yml
+=====================
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: s3-pv-redis
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  mountOptions:
+    - allow-delete
+    - allow-other
+    - uid=1000
+    - gid=1000
+    - region=ap-south-1
+  csi:
+    driver: s3.csi.aws.com
+    volumeHandle: s3-csi-driver-volume
+    volumeAttributes:
+      bucketName: cvat-bucket-test-gev
+
+
+# pv_clickhouse.yml
+=====================
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: s3-pv-clickhouse
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  mountOptions:
+    - allow-delete
+    - allow-other
+    - uid=1000
+    - gid=1000
+    - region=ap-south-1
+  csi:
+    driver: s3.csi.aws.com
+    volumeHandle: s3-csi-driver-volume
+    volumeAttributes:
+      bucketName: cvat-bucket-test-gev
+
+
+
+
+
+
+
+
+
+
+#storage.yml replacethis with template\cvat-backend\storage.yml
+=====================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-backend-data
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "cvat.labels" . | nindent 4 }}
+    app: cvat-app
+    tier: backend
+spec:
+  volumeName: s3-pv-backend
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 15Gi
+
+
+
+IMP: # put volumeName: s3-pv-kvrocks in kvrocks statfulset pvctemplate section , and modify values.yaml
+
+
+
+# s3-pv-backend   20Gi   RWX   Retain   Released   dev1/cvat-test1-backend-data
+
+# | Field                          | Meaning                                                        |
+# | ------------------------------ | -------------------------------------------------------------- |
+# | `Released`                     | PVC was deleted, **but PV still remembers it**                 |
+# | `Retain`                       | Kubernetes will **NOT recycle or rebind** the PV automatically |
+# | `dev1/cvat-test1-backend-data` | Old claimRef still exists internally                           |
+
+
+# “This PV was previously bound.
+# I will not bind it to a new PVC unless the admin explicitly clears it.”
+kubectl patch pv s3-pv-backend -p '{"spec":{"claimRef": null}}' -n dev2
+
+-------------------node auto scaler------------
 -----------------------------------------------------------
 Cluster Autoscaler on AWS
 
