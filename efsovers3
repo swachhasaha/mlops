@@ -1,0 +1,46 @@
+If you’re deploying CVAT on AWS EKS, the best and most efficient storage option is Amazon EFS, not S3.
+
+Below is a clear decision, followed by step-by-step implementation for the recommended approach (EFS) and when S3 makes sense.
+
+✅ Final Recommendation (Short Answer)
+Use case	Best Option
+CVAT persistent data (annotations, uploads, logs, DB, Redis)	✅ Amazon EFS
+Shared storage across multiple pods/nodes	✅ Amazon EFS
+Low latency, POSIX filesystem required	✅ Amazon EFS
+Cheap long-term archive / backups / exports	Amazon S3 (secondary)
+
+Production-grade CVAT on EKS = EFS (Primary) + S3 (Optional Backup)
+
+❌ Why S3 Alone Is NOT Good for CVAT
+
+CVAT requires:
+
+POSIX file system
+
+File locking
+
+Fast random read/write
+
+Shared access between pods
+
+S3 is object storage, not a filesystem.
+
+❌ Problems with S3:
+
+No POSIX support
+
+High latency
+CVAT officially recommends filesystem storage
+
+👉 Never use S3 directly as CVAT primary volume
+
+✅ Why Amazon EFS Is Best for CVAT
+
+✔ POSIX-compliant
+✔ RWX (ReadWriteMany)
+✔ Shared across nodes
+✔ Auto-scaling storage
+✔ No manual disk management
+✔ Works perfectly with Kubernetes
+
+Needs hacks like s3fs / goofys (not recommended for production)
