@@ -1,0 +1,84 @@
+I deploy cvat in aws eks cluster 
+
+role policy for auto-scaling
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Condition": {
+                "StringEquals": {
+                    "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled": "true"
+                }
+            },
+            "Action": [
+                "eks:Describe*",
+                "eks:List*",
+                "eks:AccessKubernetesApi"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EKSRead"
+        },
+        {
+            "Action": [
+                "ec2:Describe*",
+                "ec2:Get*",
+                "ec2:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EC2ReadAccess"
+        },
+        {
+            "Action": [
+                "autoscaling:Describe*",
+                "autoscaling:Get*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EC2AutoScaleWriteAccess1"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled": "true"
+                }
+            },
+            "Action": [
+                "autoscaling:SetDesiredCapacity",
+                "autoscaling:TerminateInstanceInAutoScalingGroup",
+                "autoscaling:UpdateAutoScalingGroup"
+            ],
+            "Resource": [
+                "arn:aws:autoscaling:us-east-1:042740340767:*/*/*/*"
+            ],
+            "Effect": "Allow",
+            "Sid": "EC2AutoScaleWriteAccess2"
+        }
+    ]
+}
+
+
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Federated": "arn:aws:iam::042740340767:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/63B747A82952E8BD7CD4633A8ADA87FA"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+                "StringEquals": {
+                    "oidc.eks.us-east-1.amazonaws.com/id/63B747A82952E8BD7CD4633A8ADA87FA:sub": "system:serviceaccount:kube-system:cluster-autoscaler",
+                    "oidc.eks.us-east-1.amazonaws.com/id/63B747A82952E8BD7CD4633A8ADA87FA:aud": "sts.amazonaws.com"
+                }
+            }
+        }
+    ]
+}
+
+ status: {true {Other cloudProviderError failed to increase node group size: AccessDenied: User: arn:aws:sts::042740340767:assumed-role/app-uai3062831-dhr-dbc-dev-dbc-asg-sa-eks/1770368906187785249 is not authorized to perform: autoscaling:SetDesiredCapacity on resource: arn:aws:autoscaling:us-east-1:042740340767:autoScalingGroup:c4ec1a0f-6f72-4e76-ab19-fb284050913d:autoScalingGroupName/eks-uai3062831-dbc-dev-primary-NG-a2cdda18-79a6-4f23-d368-8041d594406f because no identity-based policy allows the autoscaling:SetDesiredCapacity action                                                                                                                                                          status code: 403, request id: cd11a578-8f22-448d-8df7-f7fb2c77eb68}}                                                                                                I0206 09:42:37.781186       1 orchestrator.go:168] No expansion options                                                                                                     I0206 09:42:37.781305       1 static_autoscaler.go:555] Calculating unneeded nodes                                                                                          I0206 09:42:37.781349       1 pre_filtering_processor.go:67] Skipping ip-10-244-208-37.ec2.internal - node group min size reached (current: 1, min: 1)                      I0206 09:42:37.781414       1 static_autoscaler.go:598] Scale down status: lastScaleUpTime=2026-02-06 07:08:05.840384362 +0000 UTC m=-3574.240274793 lastScaleDownDeleteTime=2026-02-06 07:08:05.840384362 +0000 UTC m=-3574.240274793 lastScaleDownFailTime=2026-02-06 07:08:05.840384362 +0000 UTC m=-3574.240274793 scaleDownForbidden=false scaleDownInCooldown=true                                                                                                                                                            I0206 09:42:47.806709       1 static_autoscaler.go:274] Starting main loop                                                                                                  I0206 09:42:47.808062       1 aws_manager.go:188] Found multiple availability zones for ASG "eks-uai3062831-dbc-dev-primary-NG-a2cdda18-79a6-4f23-d368-8041d594406f"; using us-east-1a for failure-domain.beta.kubernetes.io/zone label                                                                                                                 I0206 09:42:47.808459       1 filter_out_schedulable.go:65] Filtering out schedulables                                                                                      I0206 09:42:47.808672       1 klogx.go:87] failed to find place for default/nginx-676b6c5bbc-5nz89: can't schedule pod default/nginx-676b6c5bbc-5nz89: couldn't find a matching Node with passing predicates                                                                                                                                            I0206 09:42:47.808785       1 klogx.go:87] failed to find place for default/nginx-676b6c5bbc-pv69p based on similar pods scheduling                                         I0206 09:42:47.808834       1 klogx.go:87] failed to find place for default/nginx-676b6c5bbc-lx5tg based on similar pods scheduling                                         I0206 09:42:47.808850       1 filter_out_schedulable.go:122] 0 pods marked as unschedulable can be scheduled.                                                               I0206 09:42:47.808870       1 filter_out_schedulable.go:85] No schedulable pods                                                                                             I0206 09:42:47.808884       1 filter_out_daemon_sets.go:47] Filtered out 0 daemon set pods, 3 unschedulable pods left                                                       I0206 09:42:47.808900       1 klogx.go:87] Pod default/nginx-676b6c5bbc-5nz89 is unschedulable                                                                              I0206 09:42:47.808907       1 klogx.go:87] Pod default/nginx-676b6c5bbc-pv69p is unschedulable                                                                              I0206 09:42:47.808913       1 klogx.go:87] Pod default/nginx-676b6c5bbc-lx5tg is unschedulable                                                                              I0206 09:42:47.808978       1 orchestrator.go:110] Upcoming 0 nodes                                                                                                         W0206 09:42:47.809014       1 orchestrator.go:626] Node group eks-uai3062831-dbc-dev-primary-NG-a2cdda18-79a6-4f23-d368-8041d594406f is not ready for scaleup - backoff with status: {true {Other cloudProviderError failed to increase node group size: AccessDenied: User: arn:aws:sts::042740340767:assumed-role/app-uai3062831-dhr-dbc-dev-dbc-asg-sa-eks/1770368906187785249 is not authorized to perform: autoscaling:SetDesiredCapacity on resource: arn:aws:autoscaling:us-east-1:042740340767:autoScalingGroup:c4ec1a0f-6f72-4e76-ab19-fb284050913d:autoScalingGroupName/eks-uai3062831-dbc-dev-primary-NG-a2cdda18-79a6-4f23-d368-8041d594406f because no identity-based policy allows the autoscaling:SetDesiredCapacity action                                                                                                                                                          status code: 403, request id: cd11a578-8f22-448d-8df7-f7fb2c77eb68}}                                                                                                I0206 09:42:47.809041       1 orchestrator.go:168] No expansion options                                                                                                     I0206 09:42:47.809102       1 static_autoscaler.go:555] Calculating unneeded nodes                                                                                          I0206 09:42:47.809122       1 pre_filtering_processor.go:67] Skipping ip-10-244-208-37.ec2.internal - node group min size reached (current: 1, min: 1)                      I0206 09:42:47.809168       1 static_autoscaler.go:598] Scale down status: lastScaleUpTime=2026-02-06 07:08:05.840384362 +0000 UTC m=-3574.240274793 lastScaleDownDeleteTime=2026-02-06 07:08:05.840384362 +0000 UTC m=-3574.240274793 lastScaleDownFailTime=2026-02-06 07:08:05.840384362 +0000 UTC m=-3574.240274793 scaleDownForbidden=false scaleDownInCooldown=true                                                                                                                                                                                                                                                                                                                                        C:\Users\560052564\Downloads> 
+
