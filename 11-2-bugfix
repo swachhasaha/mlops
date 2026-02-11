@@ -1,4 +1,4 @@
-I have deploy cvat in on eks ,now all pods are runing now I want to access this cvat from localhost , please guide me what need to chage , I am giving values.yaml and 
+I have deploy cvat in on eks ,now all pods are runing now I want to access this cvat from localhost , please guide me what need to chage , I am giving values.yaml and ingressroute.yaml please guide me
 
 # Default values for cvat.
 # This is a YAML-formatted file.
