@@ -736,5 +736,5 @@ spec:
         - name: {{ $.Release.Name }}-frontend-service
           port: 8000
 {{- end }}
-
+C:\Users\560052564\Downloads\cvat>helm upgrade -n cvat cvat-test -i --create-namespace ./helm-chart -f ./helm-chart/values.yaml                                             Error: UPGRADE FAILED: error validating "": error validating data: [apiVersion not set, kind not set]                                                                                                                               
 
