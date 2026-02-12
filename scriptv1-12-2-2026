@@ -1,0 +1,123 @@
+#!/bin/bash
+
+set -e
+
+CLUSTER_NAME="uai3062831-dbc-dev-cluster"
+REGION="us-east-1"
+REPO_URL="https://github.com/cvat-ai/cvat.git"
+CLONE_DIR="cvat"
+NAMESPACE="cvat"
+RELEASE_NAME="cvat"
+EFS_ID="fs-09afda4fc029b1a90"
+IAM_ROLE_S3_ARN="arn:aws:iam::042740340767:role/app-uai3062831-dhr-dbc-dev-dev-sa-eks"
+LB_ROLE_ARN="arn:aws:iam::042740340767:role/app-uai3062831-loadbalancer-controller-dev"
+
+echo "=========================================="
+echo "Checking Helm..."
+echo "=========================================="
+if ! command -v helm &> /dev/null
+then
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+fi
+
+echo "=========================================="
+echo "Cloning CVAT Repository..."
+echo "=========================================="
+if [ -d "$CLONE_DIR" ]; then
+    cd $CLONE_DIR && git pull
+else
+    git clone $REPO_URL
+    cd $CLONE_DIR
+fi
+
+echo "=========================================="
+echo "Updating kubeconfig..."
+echo "=========================================="
+aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME
+
+echo "=========================================="
+echo "Creating Namespace (if not exists)..."
+echo "=========================================="
+kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+echo "=========================================="
+echo "Creating EFS StorageClass..."
+echo "=========================================="
+
+echo "=========================================="
+echo "Creating AWS Load Balancer Controller ServiceAccount..."
+echo "=========================================="
+
+cat <<EOF > aws-lb-sa.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-load-balancer-controller
+  namespace: kube-system
+  annotations:
+    eks.amazonaws.com/role-arn: ${LB_ROLE_ARN}
+EOF
+
+kubectl apply -f aws-lb-sa.yaml
+
+echo "=========================================="
+echo "Installing AWS Load Balancer Controller..."
+echo "=========================================="
+
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system --set clusterName=uai3062831-dbc-dev-cluster --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller --set region=us-east-1 --set v=2
+
+
+
+cat <<EOF > efs-sc.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: ${EFS_ID}
+  directoryPerms: "700"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+EOF
+
+kubectl apply -f efs-sc.yaml
+
+echo "=========================================="
+echo "Creating S3 ServiceAccount (IRSA)..."
+echo "=========================================="
+
+cat <<EOF > s3-sa.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: s3-sa
+  namespace: ${NAMESPACE}
+  annotations:
+    eks.amazonaws.com/role-arn: ${IAM_ROLE_S3_ARN}
+EOF
+
+kubectl apply -f s3-sa.yaml
+
+
+
+echo "=========================================="
+echo "Deploying CVAT..."
+echo "=========================================="
+
+helm upgrade --install $RELEASE_NAME ./helm-chart \
+  --namespace $NAMESPACE \
+  --create-namespace
+
+echo "=========================================="
+echo "Deployment Completed!"
+echo "=========================================="
+
+kubectl get pods -n $NAMESPACE
