@@ -1,3 +1,25 @@
+✅ Option 1 (Recommended for EKS) — Install via Helm
+
+This is the cleanest and production-friendly method.
+
+1️⃣ Add Helm repo
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm repo update
+
+2️⃣ Install metrics-server with EKS flags
+helm install metrics-server metrics-server/metrics-server \
+  -n kube-system \
+  --set args="{--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP}"
+
+3️⃣ Verify
+kubectl get pods -n kube-system | grep metrics
+kubectl top nodes
+kubectl top pods -n cvat
+
+
+If kubectl top works → ✅ HPA ready.
+
+
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
 
