@@ -1,3 +1,5 @@
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
 In AWS EKS we have two option 
 1 POD Autosacling
     1>horizontal pod Autoscaler
