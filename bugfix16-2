@@ -1,0 +1,283 @@
+postgresql:
+  enabled: false
+  external:
+    host: gev-pgd-cvat.co9gi240g6vw.us-east-1.rds.amazonaws.com
+    port: 2483
+  auth:
+    username: cvat_web
+    database: dbc_cvat
+  secret:
+    create: true
+    name: "my-postgresql-secret"
+    password: MYkDTrJL0N7dI5uy
+
+
+# https://artifacthub.io/packages/helm/bitnami/redis
+redis:
+  enabled: true
+  image:
+    registry: public.ecr.aws
+    repository: docker/library/redis
+    tag: 7.2.11
+  global:
+    security:
+      allowInsecureImages: true
+  external:
+    host: 127.0.0.1
+  architecture: standalone
+  auth:
+    existingSecret: "cvat-redis-secret"
+    existingSecretPasswordKey: password
+  secret:
+    create: true
+    name: cvat-redis-secret
+    password: cvat_redis
+  # defaultStorage:
+  #     enabled: true
+  #     storageClassName: efs-sc
+  #     accessModes:
+  #       - ReadWriteMany
+  #     size: 50Gi
+  securityContext:
+    runAsNonRoot: false
+
+    # Workaround for <https://github.com/vectordotdev/vector/issues/1599>.
+    runAsUser: 0
+    runAsGroup: 0
+
+  # TODO: persistence options
+
+nuclio:
+  enabled: false
+  dashboard:
+    containerBuilderKind: kaniko
+# See https://github.com/nuclio/nuclio/blob/master/hack/k8s/helm/nuclio/values.yaml for more info
+#  registry:
+#    loginUrl: someurl
+#    credentials:
+#      username: someuser
+#      password: somepass
+
+analytics:
+  # Set clickhouse.enabled to false if you disable analytics or use an external database
+  enabled: true
+  clickhouseDb: cvat
+  clickhouseUser: user
+  clickhousePassword: user
+  clickhouseHost: "{{ .Release.Name }}-clickhouse"
+  clickhousePort: 8123
+
+vector:
+  envFrom:
+    - secretRef:
+        name: cvat-analytics-secret
+  existingConfigMaps:
+    - cvat-vector-config
+  dataDir: "/vector-data-dir"
+
+  containerPorts:
+    - name: http
+      containerPort: 8282
+      protocol: TCP
+  service:
+    ports:
+      - name: http
+        port: 8282
+        protocol: TCP
+  image:
+    tag: "0.26.0-alpine"
+  securityContext:
+    runAsNonRoot: true
+
+    # Workaround for <https://github.com/vectordotdev/vector/issues/1599>.
+    runAsUser: 1000
+    runAsGroup: 1000
+
+
+clickhouse:
+  # Set to false in case of external db usage
+  enabled: true
+  image:
+    registry: public.ecr.aws
+    repository: b8u7h5e8/clickhouse
+    tag: 23.12.2-debian-11-r0
+  shards: 1
+  replicaCount: 1
+  extraEnvVarsSecret: cvat-analytics-secret
+  auth:
+    username: user
+    existingSecret: cvat-analytics-secret
+    existingSecretKey: CLICKHOUSE_PASSWORD
+  # Consider enabling zookeeper if a distributed configuration is used
+  zookeeper:
+    enabled: false
+  # defaultStorage:
+  #     enabled: true
+  #     storageClassName: efs-sc
+  #     accessModes:
+  #       - ReadWriteMany
+  #     size: 20Gi
+  securityContext:
+    runAsNonRoot: false
+
+    # Workaround for <https://github.com/vectordotdev/vector/issues/1599>.
+    runAsUser: 0
+    runAsGroup: 0
+
+
+grafana:
+  envFromSecret: cvat-analytics-secret
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: 'ClickHouse'
+        type: 'grafana-clickhouse-datasource'
+        isDefault: true
+        jsonData:
+          defaultDatabase: ${CLICKHOUSE_DB}
+          port: ${CLICKHOUSE_PORT}
+          server: ${CLICKHOUSE_HOST}
+          username: ${CLICKHOUSE_USER}
+          tlsSkipVerify: false
+          protocol: http
+        secureJsonData:
+          password: ${CLICKHOUSE_PASSWORD}
+        editable: false
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+  dashboardsConfigMaps:
+    default: "cvat-grafana-dashboards"
+  plugins:
+    - grafana-clickhouse-datasource 4.8.2
+  grafana.ini:
+    server:
+      root_url: https://cvat.local/analytics
+    dashboards:
+      default_home_dashboard_path: /var/lib/grafana/dashboards/default/all_events.json
+    users:
+      viewers_can_edit: true
+    auth:
+      disable_login_form: true
+      disable_signout_menu: true
+    auth.anonymous:
+      enabled: true
+      org_role: Admin
+    auth.basic:
+      enabled: false
+
+# ingress:
+#   ## @param ingress.enabled Enable ingress resource generation for CVAT
+#   ##
+#   enabled: false
+#   ## @param ingress.hostname Host for the ingress resource
+#   ##
+#   hostname: cvat.local
+#   ## @param ingress.annotations Additional annotations for the Ingress resource.
+#   ##
+#   ## e.g:
+#   ## annotations:
+#   ##   kubernetes.io/ingress.class: nginx
+#   ##
+#   annotations: {}
+#   ## @param ingress.className IngressClass that will be used to implement the Ingress (Kubernetes 1.18+)
+#   ## This is supported in Kubernetes 1.18+ and required if you have more than one IngressClass marked as the default for your cluster
+#   ## ref: https://kubernetes.io/blog/2020/04/02/improvements-to-the-ingress-api-in-kubernetes-1.18/
+#   ##
+#   className: ""
+#   ## @param ingress.tls Enable TLS configuration for the host defined at `ingress.hostname` parameter
+#   ## TLS certificates will be retrieved from a TLS secret defined in tlsSecretName parameter
+#   ##
+#   tls: false
+#   ## @param ingress.tlsSecretName Specifies the name of the secret containing TLS certificates. Ignored if ingress.tls is false
+#   ##
+#   tlsSecretName: ingress-tls-cvat
+
+ingress:
+  ## @param ingress.enabled Enable ingress resource generation for CVAT
+  ##
+  enabled: true
+  ## @param ingress.hostname Host for the ingress resource
+  ##
+  hostname: ""
+  ## @param ingress.annotations Additional annotations for the Ingress resource.
+  ##
+  ## e.g:
+  annotations:
+     traefik.ingress.kubernetes.io/router.entrypoints: web
+     kubernetes.io/ingress.class: alb
+#    alb.ingress.kubernetes.io/scheme: internet-facing
+     alb.ingress.kubernetes.io/scheme: internal
+     alb.ingress.kubernetes.io/target-type: instance
+     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+     alb.ingress.kubernetes.io/subnets: subnet-011019218727b3a49,subnet-0838e4625f6af5d97
+     alb.ingress.kubernetes.io/security-groups: sg-0c3f6268467810879,sg-06869bc349112163b
+#     alb.ingress.kubernetes.io/security-groups: sg-0e6fa44da2b200ca9,sg-07f3ab0358e7b6bf2,sg-0c070e67a53dc7d4d,sg-0027e40f427db294d,sg-0c3f6268467810879,sg-06869bc349112163b
+     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:042740340767:certificate/f6c48cf9-eecb-4eeb-b78f-ca78ea8278a1
+
+  ##
+  ## annotations: {}
+  ## @param ingress.className IngressClass that will be used to implement the Ingress (Kubernetes 1.18+)
+  ## This is supported in Kubernetes 1.18+ and required if you have more than one IngressClass marked as the default for your cluster
+  ## ref: https://kubernetes.io/blog/2020/04/02/improvements-to-the-ingress-api-in-kubernetes-1.18/
+  ##
+  className: "alb"
+  ## @param ingress.tls Enable TLS configuration for the host defined at `ingress.hostname` parameter
+  ## TLS certificates will be retrieved from a TLS secret defined in tlsSecretName parameter
+  ##
+  tls: false
+  ## @param ingress.tlsSecretName Specifies the name of the secret containing TLS certificates. Ignored if ingress.tls is false
+  ##
+  tlsSecretName: ingress-tls-cvat
+
+
+traefik:
+  enabled: true
+  service:
+    type: NodePort
+
+
+    # annotations:
+    #   service.beta.kubernetes.io/aws-load-balancer-type: alb
+
+  # serviceAccount:
+  #   name: "aws-load-balancer-controller"
+
+
+  logs:
+    general:
+      format: json
+    access:
+      enabled: true
+      format: json
+      fields:
+        general:
+          defaultmode: drop
+          names:
+            ClientHost: keep
+            DownstreamContentSize: keep
+            DownstreamStatus: keep
+            Duration: keep
+            RequestHost: keep
+            RequestMethod: keep
+            RequestPath: keep
+            RequestPort: keep
+            RequestProtocol: keep
+            RouterName: keep
+            StartUTC: keep
+  providers:
+    kubernetesIngress:
+      allowEmptyServices: true
+
+smokescreen:
+  opts: ''
