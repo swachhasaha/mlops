@@ -1,0 +1,216 @@
+#!/bin/bash
+set -e
+
+CLUSTER_NAME="uai3062831-dbc-dev-cluster"
+REGION="us-east-1"
+REPO_URL="https://github.com/cvat-ai/cvat.git"
+CLONE_DIR="cvat"
+NAMESPACE="cvat"
+RELEASE_NAME="cvat"
+EFS_ID="fs-09afda4fc029b1a90"
+IAM_ROLE_S3_ARN="arn:aws:iam::042740340767:role/app-uai3062831-dhr-dbc-dev-dev-sa-eks"
+LB_ROLE_ARN="arn:aws:iam::042740340767:role/app-uai3062831-loadbalancer-controller-dev"
+
+echo "==== Installing kubectl ===="
+if ! command -v kubectl &> /dev/null; then
+  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+fi
+kubectl version --client
+
+echo "==== Installing Helm ===="
+if ! command -v helm &> /dev/null; then
+  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+fi
+
+echo "==== Installing yq ===="
+if ! command -v yq &> /dev/null; then
+  sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+  sudo chmod +x /usr/local/bin/yq
+fi
+
+echo "==== Cloning CVAT Repo ===="
+if [ -d "$CLONE_DIR" ]; then
+  cd $CLONE_DIR && git pull
+else
+  git clone $REPO_URL
+  cd $CLONE_DIR
+fi
+
+echo "==== Updating kubeconfig ===="
+aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME
+
+echo "==== Creating Namespace ===="
+kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+echo "==== Creating AWS Load Balancer Controller SA ===="
+cat <<EOF > aws-lb-sa.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-load-balancer-controller
+  namespace: kube-system
+  annotations:
+    eks.amazonaws.com/role-arn: ${LB_ROLE_ARN}
+EOF
+kubectl apply -f aws-lb-sa.yaml
+
+echo "==== Installing AWS Load Balancer Controller ===="
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName=${CLUSTER_NAME} \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --set region=${REGION}
+
+echo "==== Creating EFS StorageClass ===="
+cat <<EOF > efs-sc.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: ${EFS_ID}
+  directoryPerms: "700"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
+EOF
+kubectl apply -f efs-sc.yaml
+
+echo "==== Creating S3 ServiceAccount ===="
+cat <<EOF > s3-sa.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: s3-sa
+  namespace: ${NAMESPACE}
+  annotations:
+    eks.amazonaws.com/role-arn: ${IAM_ROLE_S3_ARN}
+EOF
+kubectl apply -f s3-sa.yaml
+
+echo "==== Updating values.yaml ===="
+VALUES_FILE="helm-chart/values.yaml"
+
+yq eval '
+.cvat.backend.serviceAccount.name = "s3-sa" |
+.cvat.backend.image = "swachhasaha/cvat_images" |
+.cvat.backend.tag = "server_v1" |
+.cvat.frontend.image = "swachhasaha/cvat_images" |
+.cvat.frontend.tag = "ui_v1" |
+.defaultStorage.enable = true |
+.defaultStorage.storageClassName = "efs-sc" |
+.defaultStorage.accessMode = ["ReadWriteMany"]
+' -i $VALUES_FILE
+
+yq eval '
+.postgresql = {
+  "enabled": false,
+  "external": {
+    "host": "gev-pgd-cvat.co9gi240g6vw.us-east-1.rds.amazonaws.com",
+    "port": 2483
+  },
+  "auth": {
+    "username": "cvat_web",
+    "database": "dbc_cvat"
+  },
+  "secret": {
+    "create": true,
+    "name": "my-postgresql-secret",
+    "password": "MYkDTrJL0N7dI5uy"
+  }
+}
+' -i $VALUES_FILE
+
+yq eval '
+.ingress = {
+  "enabled": true,
+  "hostname": "",
+  "annotations": {
+    "kubernetes.io/ingress.class": "alb",
+    "alb.ingress.kubernetes.io/scheme": "internal",
+    "alb.ingress.kubernetes.io/target-type": "instance",
+    "alb.ingress.kubernetes.io/listen-ports": "[{\"HTTP\":80}]",
+    "alb.ingress.kubernetes.io/subnets": "subnet-011019218727b3a49,subnet-0838e4625f6af5d97",
+    "alb.ingress.kubernetes.io/security-groups": "sg-0c3f6268467810879,sg-06869bc349112163b"
+  },
+  "className": "alb",
+  "tls": false,
+  "tlsSecretName": "ingress-tls-cvat"
+}
+' -i $VALUES_FILE
+
+yq eval '
+.traefik = {
+  "enabled": true,
+  "service": {
+    "type": "NodePort"
+  }
+}
+' -i $VALUES_FILE
+
+echo "==== Creating ingress templates ===="
+TEMPLATE_DIR="helm-chart/templates"
+mkdir -p $TEMPLATE_DIR
+
+cat <<'EOF' > $TEMPLATE_DIR/ingress.yaml
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "cvat.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cvat.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-traefik
+                port:
+                  number: 80
+{{- end }}
+EOF
+
+cat <<'EOF' > $TEMPLATE_DIR/ingressroute.yaml
+{{- $fullName := include "cvat.fullname" . -}}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/`)
+      services:
+        - name: {{ $.Release.Name }}-frontend-service
+          port: 8000
+EOF
+
+echo "==== Deploying CVAT ===="
+helm upgrade --install $RELEASE_NAME ./helm-chart \
+  --namespace $NAMESPACE \
+  --create-namespace
+
+echo "==== Deployment Completed ===="
+kubectl get pods -n $NAMESPACE
