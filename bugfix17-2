@@ -1,5 +1,26 @@
 traefik:
   enabled: true
+
+  providers:
+    kubernetesCRD:
+      allowCrossNamespace: true
+
+  service:
+    type: NodePort
+
+
+
+
+
+
+
+
+
+
+
+
+traefik:
+  enabled: true
   service:
     type: NodePort
 
