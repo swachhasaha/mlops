@@ -1,1 +1,2 @@
+helm install nuclio nuclio/nuclio --namespace nuclio --set dashboard.serviceType=ClusterIP
 
