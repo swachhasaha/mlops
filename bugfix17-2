@@ -1,2 +1,76 @@
-helm install nuclio nuclio/nuclio --namespace nuclio --set dashboard.serviceType=ClusterIP
+{{- $fullName := include "cvat.fullname" . -}}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  entryPoints:
+    - web
+
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/api`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/admin`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/static`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/django-rq`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/git`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/opencv`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    - kind: Rule
+      match: PathPrefix(`/profiler`)
+      services:
+        - name: {{ $.Release.Name }}-backend-service
+          port: 8080
+
+    # Catch-all route for frontend
+    - kind: Rule
+      match: PathPrefix(`/`)
+      services:
+        - name: {{ $.Release.Name }}-frontend-service
+          port: 8000
+
+    # - kind: Rule
+    #   match: PathPrefix(`/nuclio`)
+    #   services:
+    #     - name: {{ $.Release.Name }}-nuclio-dashboard
+    #       namespace: nuclio
+    #       port: 8070
+    - kind: Rule
+      match: PathPrefix(`/nuclio`)
+      services:
+        - name: nuclio-dashboard.nuclio.svc.cluster.local
+          port: 8070
+
+
+C:\Users\560052564\Downloads\cvat>kubectl get pods -n nuclio                                                                                                                NAME                                 READY   STATUS    RESTARTS   AGE                                                                                                       nuclio-controller-56f674c88b-k2smr   1/1     Running   0          96m                                                                                                       nuclio-dashboard-64f9d4bdfd-jcvlt    1/1     Running   0          96m                                                                                                                                                                                                                                                                                   C:\Users\560052564\Downloads\cvat>kubectl get svc -n nuclio                                                                                                                 NAME               TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE                                                                                            nuclio-dashboard   NodePort   172.20.134.63   <none>        8070:30679/TCP   96m                                                                                                                                                                                                                                                                        C:\Users\560052564\Downloads\cvat>kubectl get pods -n cvat                                                                                                                  NAME                                                       READY   STATUS      RESTARTS   AGE                                                                               cvat-test-backend-initializer-r15-msnqq                    0/1     Completed   0          20h                                                                               cvat-test-backend-initializer-r19-jpppd                    0/1     Completed   0          42m                                                                               cvat-test-backend-initializer-r20-2w9k7                    0/1     Completed   0          39m                                                                               cvat-test-backend-initializer-r24-6p6b4                    0/1     Completed   0          8m36s                                                                             cvat-test-backend-server-5d7dcd5ff5-tgp8v                  1/1     Running     0          36m                                                                               cvat-test-backend-worker-annotation-57b56b58f5-4fn2k       1/1     Running     0          3d19h                                                                             cvat-test-backend-worker-chunks-5d9bb4785-ng9fn            1/1     Running     0          20h                                                                               cvat-test-backend-worker-consensus-d4b7dc4b-zgtkx          1/1     Running     0          3d19h                                                                             cvat-test-backend-worker-export-54f7d6dd84-84msc           1/1     Running     0          20h                                                                               cvat-test-backend-worker-import-74fbb786d7-jtgz2           1/1     Running     0          20h                                                                               cvat-test-backend-worker-qualityreports-567d9c7f95-6h5gs   1/1     Running     0          3d19h                                                                             cvat-test-backend-worker-utils-5f59b7b96-fdjdp             1/1     Running     0          3d19h                                                                             cvat-test-backend-worker-webhooks-7b6cc5c74f-6q5m4         1/1     Running     0          3d19h                                                                             cvat-test-clickhouse-shard0-0                              1/1     Running     0          3d21h                                                                             cvat-test-frontend-d66cd58b6-w7lm8                         1/1     Running     0          3d20h                                                                             cvat-test-grafana-76b67f5988-fdrvt                         1/1     Running     0          3d20h                                                                             cvat-test-kvrocks-0                                        1/1     Running     0          3d20h                                                                             cvat-test-opa-78596f5594-4z9dc                             1/1     Running     0          3d20h                                                                             cvat-test-redis-master-0                                   1/1     Running     0          3d21h                                                                             cvat-test-traefik-76b7b465bd-zbn2x                         1/1     Running     0          3d20h                                                                             cvat-test-vector-0                                         1/1     Running     0          3d20h   
+
 
