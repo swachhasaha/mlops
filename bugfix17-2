@@ -1,3 +1,9 @@
+traefik:
+  enabled: true
+  service:
+    type: NodePort
+
+
 kubectl exec -it cvat-test-backend-server-5d7dcd5ff5-tgp8v -n cvat -- curl http://nuclio-dashboard.nuclio.svc.cluster.local:8070
 
 
