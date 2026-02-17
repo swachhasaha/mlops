@@ -1,3 +1,6 @@
+kubectl exec -it cvat-test-backend-server-xxxxx -n cvat -- curl http://nuclio-dashboard.nuclio.svc.cluster.local:8070
+
+
 C:\Users\560052564\Downloads\cvat>kubectl get svc -n nuclio                                                                                                                 NAME               TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)    AGE                                                                                                  nuclio-dashboard   ClusterIP   172.20.13.53   <none>        8070/TCP   73m                                                                                                                                                                                                                                                                              C:\Users\560052564\Downloads\cvat>     
 
 
