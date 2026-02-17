@@ -1,3 +1,6 @@
+nuctl deploy --project-name cvat --path pytorch\facebookresearch\sam --platform kube --namespace nuclio --resource-limit memory=10Gi --resource-limit cpu=4
+
+
 nuctl deploy --project-name cvat --path pytorch\facebookresearch\detectron2 --platform kube --namespace nuclio --resource-limit memory=6Gi --resource-limit cpu=3
 
 
