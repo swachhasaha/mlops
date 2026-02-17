@@ -1,3 +1,5 @@
+helm install nuclio nuclio/nuclio --namespace nuclio --set dashboard.serviceType=ClusterIP
+
 {{- $fullName := include "cvat.fullname" . -}}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
