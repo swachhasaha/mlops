@@ -27,3 +27,115 @@ helm install monitoring prometheus-community/kube-prometheus-stack \
 kubectl port-forward svc/monitoring-grafana -n monitoring 3000:80
 
 http://localhost:3000
+
+----------------------------
+
+
+ARG NUCLIO_LABEL=1.6.0
+ARG NUCLIO_ARCH=amd64
+ARG NUCLIO_BASE_IMAGE=python:3.8
+ARG NUCLIO_ONBUILD_IMAGE=quay.io/nuclio/handler-builder-python-onbuild:${NUCLIO_LABEL}-${NUCLIO_ARCH}
+
+# Supplies processor uhttpc, used for healthcheck
+FROM nuclio/uhttpc:0.0.3-amd64 as uhttpc
+
+# Supplies processor binary, wrapper
+FROM ${NUCLIO_ONBUILD_IMAGE} as processor
+# From the base image
+FROM ${NUCLIO_BASE_IMAGE}
+# Copy required objects from the suppliers
+COPY --from=processor /home/nuclio/bin/processor /usr/local/bin/processor
+COPY --from=processor /home/nuclio/bin/py /opt/nuclio/
+COPY --from=processor /home/nuclio/bin/py*-whl/* /opt/nuclio/whl/
+COPY --from=uhttpc /home/nuclio/bin/uhttpc /usr/local/bin/uhttpc
+
+RUN python /opt/nuclio/whl/$(basename /opt/nuclio/whl/pip-*.whl)/pip install pip --no-index --find-links /opt/nuclio/whl \ 
+ && python -m pip install nuclio-sdk msgpack --no-index --find-links /opt/nuclio/whl
+
+# Readiness probe
+HEALTHCHECK --interval=1s --timeout=3s CMD /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1
+
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /opt/nuclio/sam
+RUN apt-get update && apt-get -y install curl git python3 python3-pip python-is-python3 ffmpeg libsm6 libxext6 && rm -rf /var/lib/apt/lists/*
+RUN pip3 install torch torchvision torchaudio pycocotools matplotlib onnxruntime onnx --no-cache-dir
+RUN pip3 install git+https://github.com/facebookresearch/segment-anything.git --no-cache-dir
+COPY sam_vit_h_4b8939.pth .
+COPY model_handler.py /opt/nuclio
+COPY main.py /opt/nuclio
+COPY function.yaml /opt/nuclio
+CMD [ "processor" ]
+
+
+------
+
+
+function.yaml
+
+# Copyright (C) CVAT.ai Corporation
+#
+# SPDX-License-Identifier: MIT
+runtime: shell
+metadata:
+  name: samnew #pth-facebookresearch-sam-vit-h
+  namespace: cvat
+  annotations:
+    name: Segment Anything
+    version: 2
+    type: interactor
+    spec:
+    min_pos_points: 0
+    min_neg_points: 0
+    startswith_box_optional: true
+    animated_gif: https://raw.githubusercontent.com/cvat-ai/cvat/develop/site/content/en/images/hrnet_example.gif
+    help_message: The interactor allows to get a mask of an object using at least one positive, and any negative points inside it
+
+spec:
+  description: Interactive object segmentation with Segment-Anything
+  runtime: 'python:3.10'
+  handler: main:handler
+  eventTimeout: 30s
+  env:
+    - name: PYTHONPATH
+      value: /opt/nuclio/sam
+
+  # build:
+  #   image: cvat.pth.facebookresearch.sam.vit_h
+  #   baseImage: ubuntu:22.04
+
+  #   directives:
+  #     preCopy:
+  #     # disable interactive frontend
+  #       - kind: ENV
+  #         value: DEBIAN_FRONTEND=noninteractive
+  #     # set workdir
+  #       - kind: WORKDIR
+  #         value: /opt/nuclio/sam
+  #     # install basic deps
+  #       - kind: RUN
+  #         value: apt-get update && apt-get -y install curl git python3 python3-pip python-is-python3 ffmpeg libsm6 libxext6 && rm -rf /var/lib/apt/lists/*
+  #     # install sam deps
+  #       - kind: RUN
+  #         value: pip3 install torch torchvision torchaudio pycocotools matplotlib onnxruntime onnx --no-cache-dir
+  #     # install sam code
+  #       - kind: RUN
+  #         value: pip3 install git+https://github.com/facebookresearch/segment-anything.git --no-cache-dir
+  #     # download sam weights
+  #       - kind: RUN
+  #         value: curl -O https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+
+  triggers:
+    myHttpTrigger:
+      numWorkers: 2
+      kind: 'http'
+      workerAvailabilityTimeoutMilliseconds: 10000
+      attributes:
+        maxRequestBodySize: 33554432 # 32MB
+
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume
+
