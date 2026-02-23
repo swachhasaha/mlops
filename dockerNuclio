@@ -14,3 +14,16 @@ COPY sam_vit_h_4b8939.pth .
 
 
 Docker images---->>>     swachhasaha/cvat_images:sam_vit
+
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+kubectl create namespace monitoring
+
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring
+
+kubectl port-forward svc/monitoring-grafana -n monitoring 3000:80
+
+http://localhost:3000
