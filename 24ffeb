@@ -24,8 +24,8 @@ kubectl port-forward -n prometheus deploy/prometheus-server 8080:9090
 
 # Deploy Grafana using below command
 kubectl create namespace grafana
-helm install grafana grafana/grafana --namespace grafana --set persistence.storageClassName="gp2" --set persistence.enabled=true --set adminPassword='EKS!sAWSome' --values ./grafana.yaml --set service.type=LoadBalancer
-
+helm install grafana grafana/grafana --namespace grafana --set persistence.storageClassName="efs-sc" --set persistence.enabled=true --set adminPassword='EKS!sAWSome' --values ./grafana.yaml --set service.type=LoadBalancer
+helm install grafana grafana/grafana --namespace grafana --create-namespace --set persistence.enabled=true --set persistence.storageClassName=efs-sc --set service.type=ClusterIP --set adminPassword='EKS!sAWSome' --set initChownData.enabled=false --set podSecurityContext.fsGroup=472 --set securityContext.runAsUser=472 --set securityContext.runAsGroup=472 
 # Check if Grafana is deployed
 kubectl get all -n grafana
 
