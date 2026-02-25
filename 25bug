@@ -45,3 +45,160 @@ Trigger if memory > 14GB
 2️⃣ Configure HPA for backend & workers
 3️⃣ Setup Alertmanager (Slack / Email)
 4️⃣ Optimize SAM memory usage (vit-b → vit-h)
+
+
+✅ 1️⃣ Check Which Pod Terminated (Restarted)
+
+In Grafana → Create New Panel → Select Prometheus datasource
+
+🔴 A) Pod Restart Count
+
+Use this query:
+
+increase(kube_pod_container_status_restarts_total{namespace="cvat"}[10m])
+What this shows:
+
+If value > 0 → Pod restarted in last 10 minutes
+
+If 0 → No restart
+
+🔴 B) Show Only Pods That Restarted
+increase(kube_pod_container_status_restarts_total{namespace="cvat"}[10m]) > 0
+
+Panel Type:
+👉 Table
+
+🔴 C) Detect OOMKilled Pods (Very Important for SAM)
+kube_pod_container_status_last_terminated_reason{namespace="cvat", reason="OOMKilled"}
+
+If value = 1 → Pod was killed due to memory
+
+✅ 2️⃣ Check Which Pod Has High CPU
+🟠 CPU Usage Per Pod
+sum(rate(container_cpu_usage_seconds_total{namespace="cvat"}[5m])) by (pod)
+
+Panel Type:
+👉 Time series
+
+🔥 Show Top 5 Highest CPU Pods
+topk(5, sum(rate(container_cpu_usage_seconds_total{namespace="cvat"}[5m])) by (pod))
+
+This is very useful in production.
+
+🚨 Alert for High CPU (>80% of 1 core)
+
+If 1 core = 1000m
+
+sum(rate(container_cpu_usage_seconds_total{namespace="cvat"}[5m])) by (pod) > 0.8
+✅ 3️⃣ Check Which Pod Has High Memory
+🟣 Memory Usage Per Pod (MB)
+container_memory_usage_bytes{namespace="cvat"} / 1024 / 1024
+🔥 Top 5 Memory Consumers
+topk(5, container_memory_usage_bytes{namespace="cvat"}) / 1024 / 1024
+
+This will clearly show:
+
+Your SAM pod (~12000 MB)
+
+ClickHouse
+
+Backend
+
+🚨 Alert if Memory > 80%
+
+If limit is 16GB:
+
+container_memory_usage_bytes{namespace="cvat"} > 13 * 1024 * 1024 * 1024
+✅ 4️⃣ Best Dashboard Layout (Recommended for You)
+
+Since you’re running:
+
+CVAT
+
+Nuclio (SAM)
+
+ClickHouse
+
+Redis
+
+Workers
+
+Create dashboard sections:
+
+📊 Section 1: Cluster Health
+
+Node CPU
+
+Node Memory
+
+📊 Section 2: CVAT Backend
+
+CPU
+
+Memory
+
+Restart count
+
+📊 Section 3: Nuclio (AI Models)
+
+Memory (CRITICAL)
+
+GPU (if using)
+
+Restart
+
+📊 Section 4: Database
+
+ClickHouse CPU
+
+Redis memory
+
+🔥 SUPER IMPORTANT (Production Tip)
+
+Instead of manual panels:
+
+Import this dashboard in Grafana:
+
+Dashboard ID:
+
+6417
+
+Name:
+Kubernetes Pod Monitoring
+
+It already includes:
+
+Restart count
+
+CPU
+
+Memory
+
+Network
+
+🧠 Bonus: Real-Time Terminated Pods (Event Monitoring)
+
+If you want real-time termination detection:
+
+kube_pod_status_phase{namespace="cvat", phase="Failed"}
+🏁 Summary for You
+
+To see:
+
+What You Want	Query
+Restarted Pod	increase(kube_pod_container_status_restarts_total[10m])
+OOMKilled	kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}
+High CPU	topk(5, rate(container_cpu_usage_seconds_total[5m]))
+High Memory	topk(5, container_memory_usage_bytes)
+
+If you want next, I can:
+
+🔹 Create a complete production-ready CVAT Grafana dashboard JSON
+
+🔹 Help you configure Alertmanager (Email / Slack)
+
+🔹 Help you set HPA auto-scaling for backend & workers
+
+🔹 Optimize your 12GB SAM memory usage
+
+Tell me what you want next 🚀
