@@ -199,6 +199,77 @@ If you want next, I can:
 
 🔹 Help you set HPA auto-scaling for backend & workers
 
+
+✅ 1️⃣ Detect Pods That Restarted (Most Reliable Method)
+
+In Grafana → New Panel → Prometheus datasource
+
+🔴 Query (Pods Restarted in Last 10 Minutes)
+increase(kube_pod_container_status_restarts_total{namespace="cvat"}[10m]) > 0
+What it means:
+
+If value = 1 or more → Pod restarted
+
+If 0 → No restart
+
+Shows only pods that restarted in last 10 mins
+
+👉 Panel Type: Table
+
+✅ 2️⃣ Show Restart Count Per Pod
+increase(kube_pod_container_status_restarts_total{namespace="cvat"}[10m])
+
+This shows how many times each pod restarted.
+
+✅ 3️⃣ Detect OOMKilled Pods (Very Important for Your SAM Pod)
+
+Since you are running:
+
+nuclio-pth-facebookresearch-sam-vit-h (~12GB memory)
+
+Use:
+
+kube_pod_container_status_last_terminated_reason{namespace="cvat", reason="OOMKilled"} == 1
+
+If result = 1 → Pod terminated due to memory issue.
+
+✅ 4️⃣ Detect Pods in Failed State
+kube_pod_status_phase{namespace="cvat", phase="Failed"} == 1
+
+Shows pods that are currently failed.
+
+✅ 5️⃣ Detect CrashLoopBackOff Pods
+kube_pod_container_status_waiting_reason{namespace="cvat", reason="CrashLoopBackOff"} == 1
+🎯 BEST PRACTICE (Use This Combined Panel)
+
+If you want a powerful production query:
+
+increase(kube_pod_container_status_restarts_total{namespace="cvat"}[5m])
+
+Then:
+
+Add Threshold: > 0
+
+Panel Type: Table
+
+Sort by Value (Descending)
+
+This will instantly show which pod crashed recently.
+
+🔥 For Real Production Monitoring (Recommended for You)
+
+Since you're running CVAT + Nuclio + ClickHouse:
+
+Add an alert:
+
+Condition:
+
+increase(kube_pod_container_status_restarts_total{namespace="cvat"}[5m]) > 2
+
+Trigger alert if restarted more than 2 times in 5 minutes.
+
 🔹 Optimize your 12GB SAM memory usage
 
 Tell me what you want next 🚀
+
+
