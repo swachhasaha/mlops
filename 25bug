@@ -4,3 +4,44 @@ C:\Users\560052564\Downloads>kubectl get all -n prometheus                      
 -----------
 
 C:\Users\560052564\Downloads>kubectl top pods -n cvat                                                                                                                       NAME                                                       CPU(cores)   MEMORY(bytes)                                                                                       cvat-test-backend-server-56c99d4655-kcw7g                  5m           443Mi                                                                                               cvat-test-backend-worker-annotation-5656778c8c-x8hgt       1m           202Mi                                                                                               cvat-test-backend-worker-chunks-76b8bcbb7-5klgm            1m           239Mi                                                                                               cvat-test-backend-worker-chunks-76b8bcbb7-zvv9g            1m           197Mi                                                                                               cvat-test-backend-worker-consensus-6b494fd78b-mm9gr        1m           210Mi                                                                                               cvat-test-backend-worker-export-678d5cf48d-cq6vz           1m           196Mi                                                                                               cvat-test-backend-worker-export-678d5cf48d-r76ch           1m           199Mi                                                                                               cvat-test-backend-worker-import-67dc68bdf5-dgt67           1m           199Mi                                                                                               cvat-test-backend-worker-import-67dc68bdf5-m885n           1m           196Mi                                                                                               cvat-test-backend-worker-qualityreports-76cb858689-rdfr6   1m           193Mi                                                                                               cvat-test-backend-worker-utils-6d66d96cb-dlshk             1m           352Mi                                                                                               cvat-test-backend-worker-webhooks-6498b4dc4f-fn6qp         1m           197Mi                                                                                               cvat-test-clickhouse-shard0-0                              85m          540Mi                                                                                               cvat-test-frontend-d66cd58b6-j7js6                         1m           8Mi                                                                                                 cvat-test-grafana-649f6f6f86-6lnss                         5m           110Mi                                                                                               cvat-test-kvrocks-0                                        5m           228Mi                                                                                               cvat-test-nuclio-controller-5cd9c8f49f-rrgsh               1m           11Mi                                                                                                cvat-test-nuclio-dashboard-6b96cfd4b7-7pjmm                2m           40Mi                                                                                                cvat-test-opa-78596f5594-vnrbn                             1m           29Mi                                                                                                cvat-test-redis-master-0                                   18m          5Mi                                                                                                 cvat-test-traefik-5b7889d945-zcmbd                         1m           27Mi                                                                                                cvat-test-vector-0                                         1m           12Mi                                                                                                nuclio-pth-facebookresearch-sam-vit-h-5b588bb757-kwgxc     2m           12074Mi                                                                                                                                                                                                                                                                         C:\Users\560052564\Downloads>                  
+
+
+--------------
+
+✅ 4️⃣ See SAME DATA in Prometheus (Queries)
+🔹 CPU per Pod (CVAT)
+sum(rate(container_cpu_usage_seconds_total{namespace="cvat"}[5m])) by (pod)
+🔹 Memory per Pod (CVAT)
+container_memory_usage_bytes{namespace="cvat"} / 1024 / 1024
+
+Filter only SAM:
+
+container_memory_usage_bytes{pod=~"nuclio.*"} / 1024 / 1024
+✅ 5️⃣ Grafana Panels You MUST Create
+📊 Panel 1: Top Memory Consumers
+
+Query:
+
+topk(5, container_memory_usage_bytes{namespace="cvat"}) / 1024 / 1024
+📊 Panel 2: CPU Usage per Pod
+rate(container_cpu_usage_seconds_total{namespace="cvat"}[5m])
+🚨 6️⃣ ALERTS YOU SHOULD ADD (Very Important)
+🚨 SAM Memory Alert
+container_memory_usage_bytes{pod=~"nuclio.*"} > 14 * 1024 * 1024 * 1024
+
+Trigger if memory > 14GB
+
+🏁 Final Summary
+
+✔ Metrics-server → WORKING
+✔ Prometheus → WORKING
+✔ Grafana → WORKING
+✔ CVAT → HEALTHY
+⚠️ SAM → Very high memory (expected)
+
+🔜 What I can help you with NEXT:
+
+1️⃣ Create Grafana dashboard JSON for CVAT
+2️⃣ Configure HPA for backend & workers
+3️⃣ Setup Alertmanager (Slack / Email)
+4️⃣ Optimize SAM memory usage (vit-b → vit-h)
