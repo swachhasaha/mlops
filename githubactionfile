@@ -1,0 +1,59 @@
+name: Develop Branch - Build & Push CVAT Images (latest)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCOUNT_ID: 123456789012   # <-- Put your AWS Account ID
+      AWS_REGION: us-east-1
+      ROLE_ARN: arn:aws:iam::123456789012:role/github-eks-role  # update
+      ECR_SERVER_REPO: cvat/server
+      ECR_UI_REPO: cvat/ui
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+          aws ecr get-login-password --region ${AWS_REGION} | \
+          docker login --username AWS --password-stdin ${ECR_REGISTRY}
+
+      - name: Build CVAT Server and UI
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.dev.yaml \
+            build server ui
+
+      - name: Tag & Push CVAT Server (latest)
+        run: |
+          ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker tag cvat/server:latest \
+            ${ECR_REGISTRY}/${ECR_SERVER_REPO}:latest
+
+          docker push ${ECR_REGISTRY}/${ECR_SERVER_REPO}:latest
+
+      - name: Tag & Push CVAT UI (latest)
+        run: |
+          ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker tag cvat/ui:latest \
+            ${ECR_REGISTRY}/${ECR_UI_REPO}:latest
+
+          docker push ${ECR_REGISTRY}/${ECR_UI_REPO}:latest
