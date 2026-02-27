@@ -1,0 +1,98 @@
+# This workflow builds and pushes torchrunner and tensorflow runner images to ECR
+# The image is build for either the torch or tensorflow model runner based on the input provided
+# The image is tagged with the version entered during tagging of the image
+
+name: Develop Branch Build Docker Image and Push to ECR
+
+on:
+  workflow_dispatch:
+    inputs:
+      modelrunner:
+        description: Model runner to deploy (torch or tf)
+        required: true
+        default: torch
+        type: choice
+        options:
+          - torchrunner
+          - tfrunner
+
+jobs:
+  dev-build-and-push-image:
+    runs-on: 
+      group: old-rss-huge
+
+    env:
+      AWS_DESTINATION_ACCOUNT: "042740340767"
+      AWS_REGION: us-east-1
+      ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
+      AWS_ECR: 763104351884.dkr.ecr.us-east-1.amazonaws.com
+      IMAGE_NAME: ${{ github.event.inputs.modelrunner }}
+
+    steps:
+      - name: Print Input values
+        run: |
+          echo "IMAGE_NAME: ${IMAGE_NAME}"
+
+      - name: Checkout develop branch
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          lfs: true
+
+      - name: Set image tag using latest commit SHA from develop
+        run: echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Set build variables
+        run: |
+          # Set build variables based on the model runner input
+          if [ "$IMAGE_NAME" = "torchrunner" ]; then
+            echo "AWS_DESTINATION_REPO=app-uai3062831-dhr-dbc-dev/torchrunner" >> $GITHUB_ENV
+            echo "RUNTIME_SAGEMAKER_IMAGE=torch_runner-sagemaker:0.0" >> $GITHUB_ENV
+            echo "MAKE_FILE_IMAGE=torch" >> $GITHUB_ENV
+          elif [ "$IMAGE_NAME" = "tfrunner" ]; then
+            echo "AWS_DESTINATION_REPO=app-uai3062831-dhr-dbc-dev/ai-tensorflow" >> $GITHUB_ENV
+            echo "RUNTIME_SAGEMAKER_IMAGE=tf_runner-sagemaker-tf:0.0" >> $GITHUB_ENV
+            echo "MAKE_FILE_IMAGE=tf" >> $GITHUB_ENV
+          fi
+
+      # Build the docker image and push to ECR
+      - name: Build and Push Image to ECR
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # Set the ECR registry
+          ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          # Install build-essential
+          sudo apt update && sudo apt install -y build-essential
+
+          # Login to the AWS ECR for pulling base image
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${AWS_ECR}
+
+          # Build the image
+          make sagemaker-${MAKE_FILE_IMAGE}
+
+          # Tag the image
+          docker tag ${RUNTIME_SAGEMAKER_IMAGE} ${ECR_REGISTRY}/${AWS_DESTINATION_REPO}:${IMAGE_NAME}-develop-latest
+
+          # Get the credentials for the role
+          CREDS=$( aws sts assume-role \
+            --role-arn $ROLE_ARN \
+            --role-session-name "ghrunner" \
+            --external-id ${{ secrets.APP_EXTERNAL_ID }} );
+          # Set the environment variables for the role
+          export AWS_ACCESS_KEY_ID=$( echo "$CREDS" | jq -r .Credentials.AccessKeyId );
+          export AWS_SECRET_ACCESS_KEY=$( echo "$CREDS" | jq -r .Credentials.SecretAccessKey );
+          export AWS_SESSION_TOKEN=$( echo "$CREDS" | jq -r .Credentials.SessionToken );
+
+          # Login to the ECR
+          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+
+          # delete previous latest
+          aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO} --image-ids imageTag=${IMAGE_NAME}-develop-latest || true
+
+          # Push the image
+          docker push ${ECR_REGISTRY}/${AWS_DESTINATION_REPO}:${IMAGE_NAME}-develop-latest
+
+          docker tag ${RUNTIME_SAGEMAKER_IMAGE} ${ECR_REGISTRY}/${AWS_DESTINATION_REPO}:${IMAGE_NAME}-develop-${IMAGE_TAG}
+          docker push ${ECR_REGISTRY}/${AWS_DESTINATION_REPO}:${IMAGE_NAME}-develop-${IMAGE_TAG}
