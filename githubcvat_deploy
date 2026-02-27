@@ -1,0 +1,62 @@
+name: Deploy CVAT to EKS (Helm)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCOUNT_ID: 123456789012          # <-- your account
+      AWS_REGION: us-east-1
+      EKS_CLUSTER_NAME: your-eks-cluster    # <-- change
+      ROLE_ARN: arn:aws:iam::123456789012:role/github-eks-role
+      NAMESPACE: cvat
+      RELEASE_NAME: cvat
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Configure AWS credentials (OIDC)
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Update kubeconfig
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${AWS_REGION} \
+            --name ${EKS_CLUSTER_NAME}
+
+      # Install Helm
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      # Verify cluster
+      - name: Verify Cluster Access
+        run: kubectl get nodes
+
+      # Deploy or Upgrade CVAT
+      - name: Helm Upgrade CVAT
+        run: |
+          helm upgrade --install ${RELEASE_NAME} cvat/cvat \
+            --namespace ${NAMESPACE} \
+            --create-namespace \
+            --set server.image.repository=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/cvat/server \
+            --set server.image.tag=latest \
+            --set ui.image.repository=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/cvat/ui \
+            --set ui.image.tag=latest \
+            --wait \
+            --timeout 10m
+
+      # Verify rollout
+      - name: Check Pods
+        run: kubectl get pods -n ${NAMESPACE}
