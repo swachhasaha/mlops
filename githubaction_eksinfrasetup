@@ -1,0 +1,118 @@
+name: EKS Infra Setup for CVAT
+
+on:
+  workflow_dispatch:
+
+jobs:
+  eks-setup:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCOUNT_ID: "042740340767"
+      AWS_REGION: "us-east-1"
+      CLUSTER_NAME: "uai3062831-dbc-dev-cluster"
+      NAMESPACE: "cvat"
+      RELEASE_NAME: "cvat"
+      EFS_ID: "fs-09afda4fc029b1a90"
+      IAM_ROLE_S3_ARN: "arn:aws:iam::042740340767:role/app-uai3062831-dhr-dbc-dev-dev-sa-eks"
+      LB_ROLE_ARN: "arn:aws:iam::042740340767:role/app-uai3062831-loadbalancer-controller-dev"
+      ROLE_ARN: "arn:aws:iam::042740340767:role/github-eks-role"   # GitHub OIDC role
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Configure AWS Credentials via OIDC
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Install kubectl
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      # Install Helm
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      # Update kubeconfig
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${AWS_REGION} \
+            --name ${CLUSTER_NAME}
+
+      # Create Namespace
+      - name: Create Namespace
+        run: |
+          kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
+      # Create AWS Load Balancer Controller ServiceAccount
+      - name: Create LB ServiceAccount
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: aws-load-balancer-controller
+            namespace: kube-system
+            annotations:
+              eks.amazonaws.com/role-arn: ${LB_ROLE_ARN}
+          EOF
+
+      # Install AWS Load Balancer Controller
+      - name: Install AWS Load Balancer Controller
+        run: |
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            -n kube-system \
+            --set clusterName=${CLUSTER_NAME} \
+            --set serviceAccount.create=false \
+            --set serviceAccount.name=aws-load-balancer-controller \
+            --set region=${AWS_REGION}
+
+      # Create EFS StorageClass
+      - name: Create EFS StorageClass
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name: efs-sc
+            annotations:
+              storageclass.kubernetes.io/is-default-class: "true"
+          provisioner: efs.csi.aws.com
+          parameters:
+            provisioningMode: efs-ap
+            fileSystemId: ${EFS_ID}
+            directoryPerms: "700"
+          reclaimPolicy: Retain
+          volumeBindingMode: Immediate
+          allowVolumeExpansion: true
+          EOF
+
+      # Create S3 ServiceAccount
+      - name: Create S3 ServiceAccount
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: s3-sa
+            namespace: ${NAMESPACE}
+            annotations:
+              eks.amazonaws.com/role-arn: ${IAM_ROLE_S3_ARN}
+          EOF
+
+      # Verify Setup
+      - name: Verify Resources
+        run: |
+          kubectl get ns
+          kubectl get sa -A
+          kubectl get storageclass
