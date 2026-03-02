@@ -1,0 +1,163 @@
+# .github/workflows/build-and-push.yml
+# Builds the images and puches to ECR if the concerned files are changed.
+
+name: Dev Build Docker Image and Push to ECR
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # DEV Job for docker image build and push to ECR
+  dev-build-and-push:
+    runs-on:
+      group: global-scale-set-medium
+
+    env:
+      AWS_REGION: us-east-1
+      ECR_REGISTRY: 042740340767.dkr.ecr.us-east-1.amazonaws.com
+      IMAGE_NAME: dhr-blade-app-reports
+      AWS_DESTINATION_ACCOUNT: "042740340767"
+      AWS_DESTINATION_REPO: app-uai3062831-dhr-dbc-dev/report-svc
+      ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
+      GESOS_BASE_IMAGE_ECR: 057064532517.dkr.ecr.us-east-1.amazonaws.com
+      GESOS_BASE_IMAGE_NAME: gesos-python:3.11-slim-bullseye
+
+    steps:
+      # checkout the main branch code on runner
+      - name: Checkout code from main branch
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      # Checks if there are any changes to the code files to trigger docker image build
+      - name: Check for build-related changes
+        id: buildcheck
+        run: |
+          echo "Comparing commits ${{ github.event.before }}..${{ github.sha }}"
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+          echo "Changed files: $CHANGED_FILES"
+
+          SHOULD_BUILD=false
+          for file in $CHANGED_FILES; do
+              if [[ "$file" == "Dockerfile.aws" || "$file" == "requirements.txt" || "$file" == *.py || "$file" == src/* || "$file" == ".github/workflows/dev-build-and-push.yml" ]]; then
+                SHOULD_BUILD=true
+                break
+              fi
+          done
+
+          echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
+
+      # Sets the IMAGE_TAG variable to the first 7 characters of the latest GitHub commit SHA
+      - name: Set image tag using latest GitHub commit SHA
+        if: steps.buildcheck.outputs.should_build == 'true'
+        run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      # Log in to GESOS ECR and pull the base image
+      - name: Login to GESOS ECR and pull base image
+        if: steps.buildcheck.outputs.should_build == 'true'
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $GESOS_BASE_IMAGE_ECR
+          docker pull $GESOS_BASE_IMAGE_ECR/$GESOS_BASE_IMAGE_NAME || true
+
+      # Builds the Docker image with retry logic in case the build fails
+      - name: Build Docker image with retry
+        if: steps.buildcheck.outputs.should_build == 'true'
+        env:
+          DOCKER_BUILDKIT: 0
+        run: |
+          max_retries=5
+          attempt=1
+          until docker build -t ${IMAGE_NAME}:latest -f Dockerfile.aws .; do
+            echo "Docker build failed... attempt $attempt of $max_retries"
+            if [ $attempt -ge $max_retries ]; then
+              echo "Docker build failed after $max_retries attempts."
+              exit 1
+            fi
+            attempt=$((attempt+1))
+            sleep 10
+          done
+
+      # Below section is to use the Github Actions Cache to cache the Python packages and speed up build- to be tested
+
+      # # Cache Python packages
+      # - name: Cache Python packages
+      #   if: steps.buildcheck.outputs.should_build == 'true'
+      #   uses: actions/cache@v4
+      #   id: cache
+      #   with:
+      #     path: ~/.cache/pip
+      #     key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-pip-
+
+      # # Install Python packages using cached directory
+      # - name: Install Python packages
+      #   if: steps.buildcheck.outputs.should_build == 'true'
+      #   run: |
+      #     pip install --cache-dir ~/.cache/pip -r requirements.txt
+
+      # # Build Docker image using cache and retry logic
+      # - name: Build Docker image using cache and retry logic
+      #   if: steps.buildcheck.outputs.should_build == 'true'
+      #   env:
+      #     DOCKER_BUILDKIT: 0
+      #     PIP_CACHE_DIR: ~/.cache/pip
+      #   run: |
+      #     max_retries=5
+      #     attempt=1
+      #     # Attempt to build Docker image with a maximum of 5 retries
+      #     until docker build --build-arg PIP_CACHE_DIR=${PIP_CACHE_DIR} \
+      #                        -t ${IMAGE_NAME}:latest                       \
+      #                        -f Dockerfile.aws                             \
+      #                        --mount type=bind,src=${PIP_CACHE_DIR},dst=/root/.cache/pip .; do
+      #       echo "Docker build failed... attempt $attempt of $max_retries"
+      #       if [ $attempt -ge $max_retries ]; then
+      #         echo "Docker build failed after $max_retries attempts."
+      #         exit 1
+      #       fi
+      #       attempt=$((attempt+1))
+      #       sleep 10
+      #     done
+
+      # Assumes a role in the DEV account using the Github Actions Role
+      - name: Assume Github Action Role in DEV Account
+        if: steps.buildcheck.outputs.should_build == 'true'
+        id: assume-role
+        run: |
+          CREDS=$(aws sts assume-role \
+            --role-arn $ROLE_ARN \
+            --role-session-name "ghrunner-${GITHUB_RUN_ID}" \
+            --external-id ${{ secrets.APP_EXTERNAL_ID }} )
+
+          echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)" >> $GITHUB_OUTPUT
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)" >> $GITHUB_OUTPUT
+          echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r .Credentials.SessionToken)" >> $GITHUB_OUTPUT
+
+      # Log in to DEV ECR and push docker image
+      - name: Docker Image Push to Dev ECR
+        if: steps.buildcheck.outputs.should_build == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker tag ${IMAGE_NAME}:latest ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:${IMAGE_TAG}
+          docker push ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:${IMAGE_TAG}
+
+          docker tag ${IMAGE_NAME}:latest ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:latest
+          aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO} --image-ids imageTag=latest || true
+          docker push ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:latest
+
+    outputs:
+      pull_latest_img: ${{ steps.buildcheck.outputs.should_build }}
+
+  update-dev-ecs-task-definition:
+    needs: dev-build-and-push
+    uses: ./.github/workflows/dev-update-task-def.yml
+    secrets:
+      APP_EXTERNAL_ID: ${{ secrets.APP_EXTERNAL_ID }}
+    with:
+      pull_latest_img: ${{ needs.dev-build-and-push.outputs.pull_latest_img == 'true' }}
