@@ -1,4 +1,6 @@
 ENV NODE_TLS_REJECT_UNAUTHORIZED=0
 
-RUN yarn config set registry "http://registry.yarnpkg.com" \
+RUN apk add --no-cache ca-certificates \
+    && update-ca-certificates \
+    && yarn config set registry "http://registry.yarnpkg.com" \
     && DISABLE_HUSKY=1 yarn install --network-timeout 600000
