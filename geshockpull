@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Exit immediately if a command fails
+set -e
+
+# Variables
+AWS_REGION="us-east-1"
+ECR_REGISTRY="057064532517.dkr.ecr.us-east-1.amazonaws.com"
+BASE_IMAGE="gesos-python:3.11-slim-bullseye"
+IMAGE_NAME="dhr-blade-app-reports"
+DOCKERFILE="Dockerfile.aws"
+
+echo "=============================="
+echo "Logging into AWS ECR..."
+echo "=============================="
+
+aws ecr get-login-password --region $AWS_REGION \
+| docker login --username AWS --password-stdin $ECR_REGISTRY
+
+echo "=============================="
+echo "Pulling base image..."
+echo "=============================="
+
+docker pull $ECR_REGISTRY/$BASE_IMAGE
+
+echo "=============================="
+echo "Building Docker image..."
+echo "=============================="
+
+docker build -t ${IMAGE_NAME}:latest -f $DOCKERFILE .
+
+echo "=============================="
+echo "Docker image build completed!"
+echo "Image name: ${IMAGE_NAME}:latest"
+echo "=============================="
+
+
+
+chmod +x build_image.sh
+
+./build_image.sh
+
