@@ -1,0 +1,110 @@
+name: Build Selected Framework Image and Push to ECR
+
+on:
+  workflow_dispatch:
+    inputs:
+      framework:
+        description: Choose which model/framework image to build
+        required: true
+        default: CVAT
+        type: choice
+        options:
+          - CVAT
+          - UnetTrainer
+          - AttentionUnetTrainer
+          - YoloTrainer
+
+  push:
+    paths:
+      - 'cvat/**'
+
+jobs:
+  build-and-push:
+    runs-on:
+      group: global-scale-set-large
+
+    env:
+      AWS_ACCOUNT_ID: "042740340767"
+      AWS_REGION: us-east-1
+      ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
+      ECR_SERVER_REPO: app-uai3062831-dhr-dbc-dev/cvat_backend
+      ECR_UI_REPO: app-uai3062831-dhr-dbc-dev/cvat_ui
+      SELECTED_FRAMEWORK: ${{ github.event.inputs.framework }}
+
+    steps:
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+          aws ecr get-login-password --region ${AWS_REGION} | \
+          docker login --username AWS --password-stdin ${ECR_REGISTRY}
+
+      # -----------------------------
+      # BUILD CVAT
+      # -----------------------------
+
+      - name: Build CVAT Server and UI
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        working-directory: cvat
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.dev.yaml \
+            build server ui
+
+      # -----------------------------
+      # TAG SERVER IMAGE
+      # -----------------------------
+
+      - name: Tag CVAT Server Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker tag cvat/server:latest \
+            ${ECR_REGISTRY}/${ECR_SERVER_REPO}:latest
+
+      # -----------------------------
+      # PUSH SERVER IMAGE
+      # -----------------------------
+
+      - name: Push CVAT Server Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker push \
+            ${ECR_REGISTRY}/${ECR_SERVER_REPO}:latest
+
+      # -----------------------------
+      # TAG UI IMAGE
+      # -----------------------------
+
+      - name: Tag CVAT UI Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker tag cvat/ui:latest \
+            ${ECR_REGISTRY}/${ECR_UI_REPO}:latest
+
+      # -----------------------------
+      # PUSH UI IMAGE
+      # -----------------------------
+
+      - name: Push CVAT UI Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker push \
+            ${ECR_REGISTRY}/${ECR_UI_REPO}:latest
