@@ -1,5 +1,3 @@
-dhr-blade-retraining-pipeline\cvat\.github\workflows
-
 name: Develop Branch - Build & Push CVAT Images (latest)
 
 on:
@@ -10,10 +8,11 @@ on:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on:
+      group: global-scale-set-large
 
     env:
-      AWS_ACCOUNT_ID: 042740340767   
+      AWS_ACCOUNT_ID: "042740340767"   
       AWS_REGION: us-east-1
       ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
       ECR_SERVER_REPO: app-uai3062831-dhr-dbc-dev/cvat_backend
@@ -34,29 +33,22 @@ jobs:
           ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
           aws ecr get-login-password --region ${AWS_REGION} | \
           docker login --username AWS --password-stdin ${ECR_REGISTRY}
-
       - name: Build CVAT Server and UI
+        working-directory: cvat
         run: |
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.dev.yaml \
             build server ui
-
       - name: Tag & Push CVAT Server (latest)
         run: |
           ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-
           docker tag cvat/server:latest \
             ${ECR_REGISTRY}/${ECR_SERVER_REPO}:latest
-
           docker push ${ECR_REGISTRY}/${ECR_SERVER_REPO}:latest
-
       - name: Tag & Push CVAT UI (latest)
         run: |
           ECR_REGISTRY=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-
           docker tag cvat/ui:latest \
             ${ECR_REGISTRY}/${ECR_UI_REPO}:latest
-
           docker push ${ECR_REGISTRY}/${ECR_UI_REPO}:latest
- 
