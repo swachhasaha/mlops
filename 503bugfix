@@ -1,3 +1,5 @@
+dhr-blade-retraining-pipeline\cvat\.github\workflows
+
 name: Develop Branch - Build & Push CVAT Images (latest)
 
 on:
@@ -14,8 +16,8 @@ jobs:
       AWS_ACCOUNT_ID: 042740340767   
       AWS_REGION: us-east-1
       ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
-      ECR_SERVER_REPO: 042740340767.dkr.ecr.us-east-1.amazonaws.com/app-uai3062831-dhr-dbc-dev/cvat_backend
-      ECR_UI_REPO: 042740340767.dkr.ecr.us-east-1.amazonaws.com/app-uai3062831-dhr-dbc-dev/cvat_ui
+      ECR_SERVER_REPO: app-uai3062831-dhr-dbc-dev/cvat_backend
+      ECR_UI_REPO: app-uai3062831-dhr-dbc-dev/cvat_ui
 
     steps:
       - name: Checkout Code
