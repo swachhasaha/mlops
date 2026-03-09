@@ -1,0 +1,230 @@
+name: Dev-Build Docker Image and Push to ECR
+
+on:
+  workflow_dispatch:
+    inputs:
+      modelframework:
+        description: Model framework to build the training image for
+        required: true
+        default: UnetTrainer
+        type: choice
+        options:
+          - UnetTrainer
+          - AttentionUnetTrainer
+          - YoloTrainer
+          - PyTorchTrainer
+          - TensorFlowKerasTrain
+          - PyTorchMMdetTrainer
+          - cocoToMaskImageConversion
+          - unzipStep
+          - LabelMeToCoco
+          - KerasTrainer
+          - mask2FormerTrainer
+          - CVAT
+
+jobs:
+  build-and-push:
+    runs-on:
+      group: global-scale-set-large
+
+    env:
+      AWS_DESTINATION_ACCOUNT: "042740340767"
+      AWS_REGION: us-east-1
+      ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
+      SELECTED_FRAMEWORK: ${{ github.event.inputs.modelframework }}
+      AWS_DESTINATION_REPO_server: app-uai3062831-dhr-dbc-dev/cvat_backend
+      AWS_DESTINATION_REPO_ui: app-uai3062831-dhr-dbc-dev/cvat_ui
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # - name: Set up Python
+      #   uses: actions/setup-python@v4
+      #   with:
+      #     python-version: "3.12"
+
+      # - name: Install required Python dependencies (pin SageMaker v2)
+      #   run: |
+      #     python -m pip install --upgrade pip setuptools wheel
+      #     pip install boto3 "sagemaker>=2.170.0,<3"
+      #     python - << 'PY'
+      #     from packaging import version
+      #     import sagemaker, sys
+      #     min_ver = version.parse("2.170.0")
+      #     cur_ver = version.parse(sagemaker.__version__)
+      #     if cur_ver < min_ver:
+      #         print(f"[ERROR] sagemaker {sagemaker.__version__} is too old; need >= 2.170.0,<3")
+      #         sys.exit(1)
+      #     else:
+      #         print(f"[OK] sagemaker {sagemaker.__version__}")
+      #     PY
+
+      - name: Docker login to AWS DLC ECR (base image)
+        run: |
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin \
+              "057064532517.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      #  Minimal, race-safe tag creation (allows concurrent runs; auto-picks next version)
+      # - name: Create new training model GitHub tag
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.TOKEN_FOR_REPO_PUSH }}
+      #   shell: bash
+      #   run: |
+      #     set -e
+
+      #     git config user.email "github-actions[bot]@users.noreply.github.com"
+      #     git config user.name "github-actions[bot]"
+
+      #     # Try a few times in case a concurrent run pushes a tag just before we do
+      #     for i in {1..5}; do
+      #       git fetch --tags --force
+
+      #       latest=$(git tag --list "${IMAGE_NAME}-*" --sort=v:refname | tail -1)
+      #       version="${latest#${IMAGE_NAME}-}"
+
+      #       if [[ -z "$version" || "$version" == "$latest" ]]; then
+      #         new_ver="1.0"
+      #       else
+      #         major=${version%.*}
+      #         minor=${version##*.}
+      #         new_ver="$major.$((minor+1))"
+          #   fi
+
+          #   new_tag="${IMAGE_NAME}-${new_ver}"
+
+          #   # Create + push; on race, remove local tag and retry with the next computed version
+          #   if git tag -a "$new_tag" -m "$new_tag" && git push origin "$new_tag"; then
+          #     echo "IMAGE_TAG=$new_tag" >> $GITHUB_ENV
+          #     echo "Created and pushed tag: $new_tag"
+          #     exit 0
+          #   else
+          #     git tag -d "$new_tag" || true
+          #     echo "Tag $new_tag already taken or push raced. Retrying..."
+          #     sleep 1
+          #   fi
+          # done
+
+          # echo "Could not generate a unique tag after retries."
+          # exit 1
+      - name: Assume AWS Role
+        id: assume-role
+        run: |
+          CREDS=$(aws sts assume-role \
+            --role-arn $ROLE_ARN \
+            --role-session-name "ghrunner-${GITHUB_RUN_ID}" \
+            --external-id ${{ secrets.APP_EXTERNAL_ID }} )
+
+          echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)" >> $GITHUB_OUTPUT
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)" >> $GITHUB_OUTPUT
+          echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r .Credentials.SessionToken)" >> $GITHUB_OUTPUT
+
+      - name: Docker Push to DEV ECR (version tag only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin \
+              "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      - name: Build Docker image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        working-directory: cvat
+        env: 
+          DOCKER_BUILDKIT: 1
+          COMPOSE_DOCKER_CLI_BUILD: 1
+          HTTP_PROXY: "http://proxy.research.ge.com:80"
+          HTTPS_PROXY: "http://proxy.research.ge.com:80"
+          NO_PROXY: "localhost,127.0.0.1,.ge.com,.build.ge.com,github.apps.gevernova.net"
+          PROXY: "http://proxy.research.ge.com:80"
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.dev.yml \
+            build  
+
+          
+
+      # - name: Assume AWS Role
+      #   id: assume-role
+      #   run: |
+      #     CREDS=$(aws sts assume-role \
+      #       --role-arn $ROLE_ARN \
+      #       --role-session-name "ghrunner-${GITHUB_RUN_ID}" \
+      #       --external-id ${{ secrets.APP_EXTERNAL_ID }} )
+
+      #     echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)" >> $GITHUB_OUTPUT
+      #     echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)" >> $GITHUB_OUTPUT
+      #     echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r .Credentials.SessionToken)" >> $GITHUB_OUTPUT
+
+      # - name: Docker Push to DEV ECR (version tag only)
+      #   if: github.ref == 'refs/heads/main'
+      #   env:
+      #     AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+      #     AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+      #     AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+      #   run: |
+      #     aws ecr get-login-password --region "$AWS_REGION" \
+      #       | docker login --username AWS --password-stdin \
+      #         "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      - name: Docker Push to DEV ECR (version tag only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin \
+              "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      # -----------------------------
+      # TAG SERVER IMAGE
+      # -----------------------------
+
+      - name: Tag CVAT Server Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker tag cvat/server:GEIMAGE \
+            ${ECR_REGISTRY}/${AWS_DESTINATION_REPO_server}:GEIMAGE
+
+      # -----------------------------
+      # PUSH SERVER IMAGE
+      # -----------------------------
+
+      - name: Push CVAT Server Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker push \
+            ${ECR_REGISTRY}/${AWS_DESTINATION_REPO_server}:GEIMAGE
+
+      # -----------------------------
+      # TAG UI IMAGE
+      # -----------------------------
+
+      - name: Tag CVAT UI Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker tag cvat/ui:GEIMAGE \
+            ${ECR_REGISTRY}/${AWS_DESTINATION_REPO_ui}:GEIMAGE
+
+      # -----------------------------
+      # PUSH UI IMAGE
+      # -----------------------------
+
+      - name: Push CVAT UI Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          docker push \
+            ${ECR_REGISTRY}/${AWS_DESTINATION_REPO_ui}:GEIMAGE
