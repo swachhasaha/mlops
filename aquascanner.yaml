@@ -1,0 +1,188 @@
+#######################################################################################################################
+# GEV GitHub Standard Workflow - Container Build, Scan and PUSH to ECR
+#
+# Pre-Requisite:
+# Your AWS Target account has been setup in accordance with the following Cloud Ops guidance:
+# https://pages.github.apps.gevernova.net/DT-CTO/Vernova-Solution-Factory/Identity/AWS/Continuous-Deployment/index.html
+#
+#######################################################################################################################
+#######################################################################################################################
+
+name: Image Build_Scan
+
+on:
+  workflow_call:
+    inputs:
+      dockerfile-path:
+        required: false
+        type: string
+        default: "Dockerfile"
+      dockerfile-label:
+        required: false
+        type: string
+        default: "no-label"
+      aws-destination-dev-account:
+        required: false
+        type: string
+        default: "none"
+      aws-destination-dev-role:
+        required: false
+        type: string
+        default: "none"
+      aws-destination-dev-repo:
+        required: false
+        type: string
+        default: "none"
+      environment-deployment-url:
+        required: false
+        type: string
+        default: "none"
+
+env:
+  IMAGE_NAME: "${{ github.event.repository.name }}_${{ inputs.dockerfile-path }}"
+  IMAGE_TAG: ${{github.run_id}}
+
+##### JOBS#####
+jobs:
+  #############################################################
+  ## Build and Scan Dockerfile                               ##
+  ## This stage will only happen if not in PROD branch       ##
+  #############################################################
+  docker-build-scan-stage:
+    name: Image Build
+    if: github.ref != 'refs/heads/prod'
+    runs-on: gev-linux-large
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Only include this step if you build using GESOS images
+      - name: GESOS ECR login
+        run: |
+          aws ecr get-login-password --region us-east-1 | \
+            docker login --username AWS --password-stdin 057064532517.dkr.ecr.us-east-1.amazonaws.com
+
+      - name: Docker Build
+        env:
+          ORG: ${{ github.repository_owner }}
+          UAI_TAG: ${{ inputs.dockerfile-label }}
+        working-directory: ${{ inputs.dockerfile-path }}
+        run: |
+          # Use the inputs.dockerfile-label as an identifier so you can see results in Aqua Container Scanning Reports
+          docker build \
+            -f Dockerfile \
+            --label "github-org=${ORG}" \
+            --label "uai-tag=${UAI_TAG}" \
+            -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+            --network=host --no-cache \
+            .
+          docker history --no-trunc "${IMAGE_NAME}:${IMAGE_TAG}"
+
+      - uses: actions-extra/aqua-wrappers/image-scan@master
+        id: scan
+        with:
+          artifact: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          api-key: ${{ secrets.AQUA_KEY }}
+          api-secret: ${{ secrets.AQUA_SECRET }}
+          registry-username: ${{ secrets.AQUA_USERNAME }}
+          registry-password: ${{ secrets.AQUA_PASSWORD }}
+          img-scan-token: ${{ secrets.AQUA_TOKEN }}
+
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v3
+        with:
+          name: Container-Scan-Results
+          path: ${{ steps.scan.outputs.scan-result-json }}
+          retention-days: 5
+
+      - name: Aqua Docker Results
+        run: |
+          # result_summary=$(cat results/out.json| jq .vulnerability_summary)
+          # critical=$(echo $result_summary | jq -r .critical)
+          # high=$(echo $result_summary | jq -r .high)
+          # critical=${critical:-0}
+          # high=${high:-0}
+          # let defects=critical+high
+          # echo defects: $defects
+          # following check will be added later
+          # if [ "$defects" -gt 0 ]; then
+          #   echo "Exiting because the defects is greater than 0"
+          #   exit 1  # You can use any non-zero exit code to indicate failure
+          # fi
+
+      - name: Aqua Results Check
+        env:
+          RESULTS: ${{ steps.scan.outputs.scan-result-json }}
+        run: |
+          echo success
+          result_summary="$(cat ${RESULTS} | jq .vulnerability_summary)"
+          echo "${result_summary}"
+          critical="$(echo ${result_summary} | jq -r '.critical // 0')"
+          echo "critical: ${critical}"
+          high="$(echo ${result_summary} | jq -r '.high // 0')"
+          echo "high: ${high}"
+
+          echo "To view full scan results, you can view them here in Aqua: https://cloud.aquasec.com/ah/#/sc/images"
+
+          # let defects=critical+high
+          # defects=$((critical + high))
+          # echo defects: $defects
+          # # following check will be added later
+          # if [ "$defects" -gt 0 ]; then
+          #   echo "Exiting because the defects is greater than 0"
+          #   exit 1  # You can use any non-zero exit code to indicate failure
+          # fi
+
+      #############################################################
+      ## DEVELOPMENT ECR PUSH.                                   ##
+      ## This stage will only happen if you are in DEV branch    ##
+      #############################################################
+      - name: DEV BRANCH ONLY - Docker Push to DEV ECR
+        if: github.ref == 'refs/heads/dev'
+        ## Check to see if the current branch is DEV or PROD.
+        ### IF DEV, then push the image to the DEV ECR with DEV TAG
+        ### IF PROD, take image with DEV tag from and PUSH to PROD ECR
+        env:
+          AWS_DESTINATION_ACCOUNT: ${{ inputs.aws-destination-dev-account }}
+          AWS_DESTINATION_ROLE: ${{ inputs.aws-destination-dev-role }}
+          AWS_DESTINATION_REPO: ${{ inputs.aws-destination-dev-repo }}
+          ECR_REGION: us-east-1
+          EXTERNAL_ID: ${{ secrets.AWS_EXTERNAL_ID }}
+        run: |
+          # Assume role in destination account
+          CREDS="$(aws sts assume-role --role-arn arn:aws:iam::${AWS_DESTINATION_ACCOUNT}:${AWS_DESTINATION_ROLE} \
+            --role-session-name "ghrunner" --external-id ${EXTERNAL_ID})"
+          echo "::add-mask::${CREDS}"
+          export AWS_ACCESS_KEY_ID="$(jq -r '.Credentials.AccessKeyId' <<< ${CREDS})"
+          export AWS_SECRET_ACCESS_KEY="$(jq -r .Credentials.SecretAccessKey <<< ${CREDS})"
+          export AWS_SESSION_TOKEN="$(jq -r .Credentials.SessionToken <<< ${CREDS})"
+
+          # Log in to ECR in destination account
+          aws ecr get-login-password --region "${ECR_REGION}" | \
+            docker login --username AWS --password-stdin "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com"
+
+          # Push version image first
+          docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:${IMAGE_TAG}"
+          docker push "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:${IMAGE_TAG}"
+
+          # Next tag the latest image
+          docker tag "${IMAGE_NAME}:${IMAGE_TAG}" "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:latest"
+
+          # Delete previous latest
+          aws ecr batch-delete-image --repository-name "${AWS_DESTINATION_REPO}" --image-ids imageTag=latest
+
+          # Push new latest
+          docker push "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:latest"
+
+  Dev-Deploy-Stage:
+    name: Deploy Dev
+    needs: docker-build-scan-stage
+    if: github.ref == 'refs/heads/dev'
+    runs-on: gev-linux-small
+    environment:
+      name: ECR Image Deploy - ${IMAGE_NAME}:${IMAGE_TAG} Development
+      url: ${{ inputs.environment-deployment-url }}
+    steps:
+      - name: Status Message
+        run: |-
+          echo Development Environment Deployed Successfully
