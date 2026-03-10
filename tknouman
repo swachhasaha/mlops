@@ -1,0 +1,115 @@
+name: Build Docker Image and Push to ECR
+ 
+on:
+  push:
+    branches: [main]
+ 
+jobs:
+  build-and-push:
+    runs-on:
+      group: global-scale-set-large
+ 
+    env:
+      AWS_DESTINATION_ACCOUNT: "042740340767"
+      AWS_REGION: us-east-1
+      ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
+      IMAGE_NAME: UT
+      AWS_DESTINATION_REPO: app-uai3062831-dhr-dbc-dev/ut-model-runner
+ 
+    steps:
+      - name: Checkout code with submodules
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GIT_TOKEN_FOR_SUBMODULE }}
+          submodules: recursive
+ 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+ 
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+ 
+      - name: Create new UT-model tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_FOR_REPO_PUSH }}
+        run: |
+          # Fetch existing tags starting with 'UT-'
+          existing_tags=$(git fetch --tags && git tag -l 'UT-*')
+ 
+          # Extract the version number from the latest tag
+          latest_version=$(echo "$existing_tags" | sort -V | tail -1 | cut -d'-' -f2 | cut -d' ' -f1)
+ 
+          # If no tags are found, set version to 1
+          if [ -z "$latest_version" ]; then
+            new_version=1.0
+          else
+            major=${latest_version%.*}
+            minor=${latest_version##*.}
+            if [ $minor -eq 9 ]; then
+              major=$((major + 1))
+              minor=0
+            else
+              minor=$((minor + 1))
+            fi
+            new_version=$major.$minor
+          fi
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+ 
+          # Create a new tag
+          git tag -a "UT-$new_version" -m "UT-$new_version"
+          git push origin "UT-$new_version"
+          echo IMAGE_TAG=UT-$new_version >> $GITHUB_ENV
+        shell: bash
+ 
+      - name: Build Docker image and tag image
+        env:
+          DOCKER_BUILDKIT: 0
+          HTTP_PROXY: "http://proxy.research.ge.com:80"
+          HTTPS_PROXY: "http://proxy.research.ge.com:80"
+          NO_PROXY: "localhost,127.0.0.1,.ge.com,.build.ge.com,github.apps.gevernova.net"
+          PROXY: "http://proxy.research.ge.com:80"
+        run: |
+          python -m build -c ../config/ut_pipeline_config.json -b -o ../Blade-Cert-UT
+          # Extract the built image name from docker images
+          BUILT_IMAGE=$(docker images --format "table {{.Repository}}:{{.Tag}}" | grep -E "\.dkr\.ecr\." | head -1)
+          echo "BUILT_IMAGE_NAME=$BUILT_IMAGE" >> $GITHUB_ENV
+        working-directory: pipeline_automation
+ 
+      - name: Assume AWS Role
+        id: assume-role
+        run: |
+          CREDS=$(aws sts assume-role \
+            --role-arn $ROLE_ARN \
+            --role-session-name "ghrunner-${GITHUB_RUN_ID}" \
+            --external-id ${{ secrets.APP_EXTERNAL_ID }} )
+ 
+          echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)" >> $GITHUB_OUTPUT
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)" >> $GITHUB_OUTPUT
+          echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r .Credentials.SessionToken)" >> $GITHUB_OUTPUT
+ 
+      - name: Docker Push to DEV ECR
+        if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+ 
+          # Push the built image with version tag
+          docker tag ${BUILT_IMAGE_NAME} ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:${IMAGE_TAG}
+          docker push ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:${IMAGE_TAG}
+ 
+          # Tag and push as latest
+          docker tag ${BUILT_IMAGE_NAME} ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:latest
+ 
+          # delete previous latest
+          aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO} --image-ids imageTag=latest || true
+ 
+          # push new latest
+          docker push ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:latest
