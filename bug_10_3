@@ -1,0 +1,123 @@
+
+Image tags
+	
+Type
+	
+Created at
+	
+Image size (MB)
+	
+Image digest
+	
+Last pulled at
+
+GEIMAGE
+
+Image Index
+March 09, 2026, 18:40:44 (UTC+05.5)
+496.49
+
+sha256:ba6f24ab4449fe56eb244777c4c51a28f09ff9cb19343d14379ace9e81aa589b
+March 10, 2026, 12:00:39 (UTC+05.5)
+-
+
+Image
+March 09, 2026, 18:40:43 (UTC+05.5)
+496.49
+
+sha256:834f41c4a9afb43fcb42d1c03720438e1ba79d0cbc9bc0d3ee1898539c3fbb61
+March 10, 2026, 12:00:45 (UTC+05.5)
+-
+
+Image
+March 09, 2026, 18:40:43 (UTC+05.5)
+0.00
+
+sha256:49d9a18792bac6286f46bdee9b37744a8393f2c9d984fde8ccdb356e1210bd48
+-
+dev
+
+Image Index
+March 06, 2026, 14:01:58 (UTC+05.5)
+496.48
+
+sha256:31511012d39ead3f1df486219ca4eff36ad365fa88c67949adbc792daaf75059
+-
+-
+
+Image
+March 06, 2026, 14:01:57 (UTC+05.5)
+0.00
+
+sha256:823484785884ff8e99a88be77d99eb34d52c4985e626791a15b11367b34ba9c7
+-
+-
+
+Image
+March 06, 2026, 14:01:57 (UTC+05.5)
+496.48
+
+sha256:2ed85ade62b414e6e18b646e9953477702831d08e528c9a435d78bf54246ca85
+-
+
+
+name: Clean untagged docker image tags in ECR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  clean-blank-image-tags:
+    runs-on:
+      group: global-scale-set-large
+
+    env:
+      AWS_DESTINATION_ACCOUNT: "042740340767"
+      AWS_REGION: us-east-1
+      ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
+      AWS_DESTINATION_REPO_server: app-uai3062831-dhr-dbc-dev/cvat_backend
+      AWS_DESTINATION_REPO_ui: app-uai3062831-dhr-dbc-dev/cvat_ui
+
+    steps:
+
+      # Assume role of gha-dev account
+      - name: Assume AWS Role
+        id: assume-role
+        run: |
+          CREDS=$(aws sts assume-role \
+            --role-arn $ROLE_ARN \
+            --role-session-name "ghrunner-${GITHUB_RUN_ID}" \
+            --external-id ${{ secrets.APP_EXTERNAL_ID }} )
+          echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)" >> $GITHUB_OUTPUT
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)" >> $GITHUB_OUTPUT
+          echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r .Credentials.SessionToken)" >> $GITHUB_OUTPUT
+      - name: Clean docker untagged images in DEV ECR
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          set -euo pipefail
+          aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+          # delete untagged images_server
+          untagged_ids=$(aws ecr list-images --repository-name ${AWS_DESTINATION_REPO_server} --filter tagStatus=UNTAGGED --query 'imageIds[*]' --output json)
+          if [ "$untagged_ids" != "[]" ]; then
+            aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO_server} --image-ids "$untagged_ids"
+          fi
+          # delete all images in ECR repo with Image tag as "-"
+          image_ids=$(aws ecr list-images --repository-name ${AWS_DESTINATION_REPO_server} --query 'imageIds[?imageTag==`-`]' --output json)
+          if [ "$image_ids" != "[]" ]; then
+            aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO_server} --image-ids "$image_ids"
+          fi
+
+          # delete untagged images_ui
+          untagged_ids=$(aws ecr list-images --repository-name ${AWS_DESTINATION_REPO_ui} --filter tagStatus=UNTAGGED --query 'imageIds[*]' --output json)
+          if [ "$untagged_ids" != "[]" ]; then
+            aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO_ui} --image-ids "$untagged_ids"
+          fi
+          # delete all images in ECR repo with Image tag as "-"
+          image_ids=$(aws ecr list-images --repository-name ${AWS_DESTINATION_REPO_ui} --query 'imageIds[?imageTag==`-`]' --output json)
+          if [ "$image_ids" != "[]" ]; then
+            aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO_ui} --image-ids "$image_ids"
+          fi
+      
