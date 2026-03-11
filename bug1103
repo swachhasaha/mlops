@@ -1,0 +1,180 @@
+name: cvat initial set up in AWS EKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      modelframework:
+        description: cvat initial set up
+        required: true
+        default: CVAT
+        type: choice
+        options:
+          - UnetTrainer
+          - AttentionUnetTrainer
+          - YoloTrainer
+          - PyTorchTrainer
+          - TensorFlowKerasTrain
+          - PyTorchMMdetTrainer
+          - cocoToMaskImageConversion
+          - unzipStep
+          - LabelMeToCoco
+          - KerasTrainer
+          - mask2FormerTrainer
+          - CVAT
+
+jobs:
+  build-and-push:
+    runs-on:
+      group: global-scale-set-large
+
+    env:
+      AWS_DESTINATION_ACCOUNT: "042740340767"
+      AWS_REGION: us-east-1
+      CLUSTER_NAME: "uai3062831-dbc-dev-cluster"
+      NAMESPACE: "cvat"
+      RELEASE_NAME: "cvat"
+      EFS_ID: "fs-09afda4fc029b1a90"
+      IAM_ROLE_S3_ARN: "arn:aws:iam::042740340767:role/app-uai3062831-dhr-dbc-dev-dev-sa-eks"
+      LB_ROLE_ARN: "arn:aws:iam::042740340767:role/app-uai3062831-loadbalancer-controller-dev"
+      ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
+      SELECTED_FRAMEWORK: ${{ github.event.inputs.modelframework }}
+      AWS_DESTINATION_REPO_server: app-uai3062831-dhr-dbc-dev/cvat_backend
+      AWS_DESTINATION_REPO_ui: app-uai3062831-dhr-dbc-dev/cvat_ui
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # - name: Install kubectl
+      #   uses: azure/setup-kubectl@v4
+      #   with:
+      #     version: 'latest'
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      # - name: Docker login to AWS DLC ECR (base image)
+      #   run: |
+      #     aws ecr get-login-password --region "${AWS_REGION}" \
+      #       | docker login --username AWS --password-stdin \
+      #         "057064532517.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      
+
+      
+      
+      - name: Assume AWS Role
+        id: assume-role
+        run: |
+          CREDS=$(aws sts assume-role \
+            --role-arn $ROLE_ARN \
+            --role-session-name "ghrunner-${GITHUB_RUN_ID}" \
+            --external-id ${{ secrets.APP_EXTERNAL_ID }} )
+
+          echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)" >> $GITHUB_OUTPUT
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)" >> $GITHUB_OUTPUT
+          echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r .Credentials.SessionToken)" >> $GITHUB_OUTPUT
+
+      # - name: Docker Push to DEV ECR (version tag only)
+      #   if: github.ref == 'refs/heads/main'
+      #   env:
+      #     AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+      #     AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+      #     AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+      #   run: |
+      #     aws ecr get-login-password --region "$AWS_REGION" \
+      #       | docker login --username AWS --password-stdin \
+      #         "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      
+      - name: Docker login
+        if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin \
+              "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      
+      - name: Configure AWS credentials
+        run: |
+          echo "AWS_ACCESS_KEY_ID=${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}" >> $GITHUB_ENV
+
+
+
+
+       # Update kubeconfig
+      - name: Update kubeconfig
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          aws eks update-kubeconfig \
+            --region ${AWS_REGION} \
+            --name ${CLUSTER_NAME}
+
+      
+
+      # Verify cluster
+      - name: Verify Cluster Access
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: kubectl get nodes
+
+      # Deploy or Upgrade CVAT
+      # - name: Helm Upgrade CVAT
+      #   run: |
+      #     helm upgrade --install ${RELEASE_NAME} cvat/cvat \
+      #       --namespace ${NAMESPACE} \
+      #       --create-namespace \
+      #       --set server.image.repository=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/cvat/server \
+      #       --set server.image.tag=latest \
+      #       --set ui.image.repository=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/cvat/ui \
+      #       --set ui.image.tag=latest \
+      #       --wait \
+      #       --timeout 10m
+
+      # Verify rollout
+      - name: Check Pods
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: kubectl get pods -n ${NAMESPACE}
+
+
+
+Verify cluster
+
+Run kubectl get nodes
+
+An error occurred (AccessDenied) when calling the AssumeRole operation: User: arn:aws:sts::042740340767:assumed-role/app-***-dhr-dbc-dev-gha-role/ghrunner-427502 is not authorized to perform: sts:AssumeRole on resource: arn:aws:iam::042740340767:role/app-***/app-***-dhr-dbc-dev-gha-role
+E0311 12:39:44.684738     269 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://63B747A82952E8BD7CD4633A8ADA87FA.gr7.us-east-1.eks.amazonaws.com/api?timeout=32s\": getting credentials: exec: executable aws failed with exit code 254"
+
+An error occurred (AccessDenied) when calling the AssumeRole operation: User: arn:aws:sts::042740340767:assumed-role/app-***-dhr-dbc-dev-gha-role/ghrunner-427502 is not authorized to perform: sts:AssumeRole on resource: arn:aws:iam::042740340767:role/app-***/app-***-dhr-dbc-dev-gha-role
+E0311 12:39:45.789072     269 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://63B747A82952E8BD7CD4633A8ADA87FA.gr7.us-east-1.eks.amazonaws.com/api?timeout=32s\": getting credentials: exec: executable aws failed with exit code 254"
+
+An error occurred (AccessDenied) when calling the AssumeRole operation: User: arn:aws:sts::042740340767:assumed-role/app-***-dhr-dbc-dev-gha-role/ghrunner-427502 is not authorized to perform: sts:AssumeRole on resource: arn:aws:iam::042740340767:role/app-***/app-***-dhr-dbc-dev-gha-role
+E0311 12:39:46.900485     269 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://63B747A82952E8BD7CD4633A8ADA87FA.gr7.us-east-1.eks.amazonaws.com/api?timeout=32s\": getting credentials: exec: executable aws failed with exit code 254"
+
+An error occurred (AccessDenied) when calling the AssumeRole operation: User: arn:aws:sts::042740340767:assumed-role/app-***-dhr-dbc-dev-gha-role/ghrunner-427502 is not authorized to perform: sts:AssumeRole on resource: arn:aws:iam::042740340767:role/app-***/app-***-dhr-dbc-dev-gha-role
+E0311 12:39:48.019282     269 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://63B747A82952E8BD7CD4633A8ADA87FA.gr7.us-east-1.eks.amazonaws.com/api?timeout=32s\": getting credentials: exec: executable aws failed with exit code 254"
+
+An error occurred (AccessDenied) when calling the AssumeRole operation: User: arn:aws:sts::042740340767:assumed-role/app-***-dhr-dbc-dev-gha-role/ghrunner-427502 is not authorized to perform: sts:AssumeRole on resource: arn:aws:iam::042740340767:role/app-***/app-***-dhr-dbc-dev-gha-role
+E0311 12:39:49.115925     269 memcache.go:265] "Unhandled Error" err="couldn't get current server API group list: Get \"https://63B747A82952E8BD7CD4633A8ADA87FA.gr7.us-east-1.eks.amazonaws.com/api?timeout=32s\": getting credentials: exec: executable aws failed with exit code 254"
+Unable to connect to the server: getting credentials: exec: executable aws failed with exit code 254
+Error: Process completed with exit code 1.
+0s
+0s
+
+
