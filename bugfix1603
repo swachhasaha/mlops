@@ -36,3 +36,14 @@ sum by (pod) (
     container!="POD"
   }[5m])
 ) * 1000
+
+
+----------------
+
+sum by (pod, container) (
+  container_memory_working_set_bytes{
+    namespace="cvat",
+    container!="",
+    container!="POD"
+  }
+) / (1024 * 1024)
