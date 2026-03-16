@@ -16,4 +16,23 @@ sum(
 ) * 1000
 
 
-C:\Users\560052564\Downloads>kubectl get pods -n cvat                                                                   NAME                                                      READY   STATUS      RESTARTS        AGE                       cvat-test-backend-initializer-r1-tz6n4                    0/1     Completed   0               2d19h                     cvat-test-backend-server-6dcfcbff49-zjkf6                 1/1     Running     0               2d19h                     cvat-test-backend-worker-annotation-688bc5d555-6528s      1/1     Running     0               2d19h                     cvat-test-backend-worker-chunks-6d665f5b79-2wnp6          1/1     Running     0               2d19h                     cvat-test-backend-worker-consensus-649c969466-q4dq9       1/1     Running     0               2d19h                     cvat-test-backend-worker-export-5bff69d59b-7cklm          1/1     Running     9 (9h ago)      2d19h                     cvat-test-backend-worker-import-6bc75664ff-hwlqx          1/1     Running     0               2d19h                     cvat-test-backend-worker-qualityreports-fb6b8674f-4qrsp   1/1     Running     8 (12h ago)     2d19h                     cvat-test-backend-worker-utils-558f648d44-sm7sq           1/1     Running     0               2d19h                     cvat-test-backend-worker-webhooks-7576f6ddd7-8p9gt        1/1     Running     0               2d19h                     cvat-test-clickhouse-shard0-0                             1/1     Running     0               2d19h                     cvat-test-frontend-c8664fc5f-xk2tk                        1/1     Running     0               2d19h                     cvat-test-kvrocks-0                                       1/1     Running     0               2d19h                     cvat-test-opa-78596f5594-mgwt8                            1/1     Running     1 (2d19h ago)   2d19h                     cvat-test-redis-master-0                                  1/1     Running     0               2d19h                     cvat-test-traefik-6b6b9b6cd8-q872m                        1/1     Running     0               2d19h                                                   
+
+---
+
+sum by (pod,container) (
+  rate(container_cpu_usage_seconds_total{
+    namespace="cvat",
+    container!="",
+    container!="POD"
+  }[5m])
+) * 1000
+
+---
+
+sum by (pod) (
+  rate(container_cpu_usage_seconds_total{
+    namespace="cvat",
+    container!="",
+    container!="POD"
+  }[5m])
+) * 1000
