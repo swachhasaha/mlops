@@ -5,3 +5,12 @@ sum(
     container!="POD"
   }[5m])
 ) * 1000
+
+sum(
+  rate(container_cpu_usage_seconds_total{
+    namespace="cvat",
+    pod="cvat-backend-server",
+    container!="",
+    container!="POD"
+  }[5m])
+) * 1000
