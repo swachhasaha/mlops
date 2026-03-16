@@ -1,0 +1,7 @@
+sum(
+  rate(container_cpu_usage_seconds_total{
+    namespace="cvat",
+    container!="",
+    container!="POD"
+  }[5m])
+) * 1000
