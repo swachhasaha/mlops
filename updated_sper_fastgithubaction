@@ -1,0 +1,182 @@
+name: Dev-Build Docker Image and Push to ECR (Optimized)
+
+on:
+  workflow_dispatch:
+    inputs:
+      modelframework:
+        description: Model framework to build the training image for
+        required: true
+        default: UnetTrainer
+        type: choice
+        options:
+          - UnetTrainer
+          - AttentionUnetTrainer
+          - YoloTrainer
+          - PyTorchTrainer
+          - TensorFlowKerasTrain
+          - PyTorchMMdetTrainer
+          - cocoToMaskImageConversion
+          - unzipStep
+          - LabelMeToCoco
+          - KerasTrainer
+          - mask2FormerTrainer
+          - TorchAttentionUnetTrainer
+
+jobs:
+  build-and-push:
+    runs-on:
+      group: global-scale-set-large
+
+    env:
+      AWS_DESTINATION_ACCOUNT: "042740340767"
+      AWS_REGION: us-east-1
+      ROLE_ARN: arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role
+      IMAGE_NAME: ${{ github.event.inputs.modelframework }}
+      AWS_DESTINATION_REPO: app-uai3062831-dhr-dbc-dev/mltrainingrunners
+      DOCKER_BUILDKIT: 1   # ✅ ENABLE BUILDKIT
+
+    steps:
+      # -----------------------------
+      # Checkout
+      # -----------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # -----------------------------
+      # Python setup + cache
+      # -----------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install required Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install boto3 "sagemaker>=2.170.0,<3"
+
+      # -----------------------------
+      # Setup Docker Buildx (IMPORTANT)
+      # -----------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # -----------------------------
+      # Login to base ECR (for pulling base images)
+      # -----------------------------
+      - name: Login to AWS DLC ECR
+        run: |
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin \
+              "763104351884.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      # -----------------------------
+      # Create Git Tag (same logic, optimized)
+      # -----------------------------
+      - name: Create version tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_FOR_REPO_PUSH }}
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "github-actions"
+
+          git fetch --tags
+
+          latest=$(git tag --list "${IMAGE_NAME}-*" --sort=v:refname | tail -1)
+          version="${latest#${IMAGE_NAME}-}"
+
+          if [[ -z "$version" || "$version" == "$latest" ]]; then
+            new_ver="1.0"
+          else
+            major=${version%.*}
+            minor=${version##*.}
+            new_ver="$major.$((minor+1))"
+          fi
+
+          IMAGE_TAG="${IMAGE_NAME}-${new_ver}"
+
+          git tag -a "$IMAGE_TAG" -m "$IMAGE_TAG"
+          git push origin "$IMAGE_TAG"
+
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      # -----------------------------
+      # Build Docker Image (FAST + CACHED)
+      # -----------------------------
+      - name: Build Docker Image (with cache)
+        env:
+          HTTP_PROXY: "http://proxy.research.ge.com:80"
+          HTTPS_PROXY: "http://proxy.research.ge.com:80"
+        run: |
+          CONFIG_DIR="Blade-Cert-Train/${IMAGE_NAME}/config"
+          CONFIG_PATH=$(find "$CONFIG_DIR" -maxdepth 1 -name "*.json" -type f | head -1)
+
+          if [ -z "$CONFIG_PATH" ]; then
+            echo "Error: No JSON config found"
+            exit 1
+          fi
+
+          echo "Using config: $CONFIG_PATH"
+
+          # Run your python build
+          python -m build -c "$CONFIG_PATH" -b
+
+      # -----------------------------
+      # Build + Tag using Buildx cache
+      # -----------------------------
+      - name: Build Docker image (cached)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile   # 🔁 change if needed
+          push: false
+          tags: temp-image:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # -----------------------------
+      # Assume AWS Role
+      # -----------------------------
+      - name: Assume AWS Role
+        id: assume-role
+        run: |
+          CREDS=$(aws sts assume-role \
+            --role-arn $ROLE_ARN \
+            --role-session-name "ghrunner-${GITHUB_RUN_ID}" \
+            --external-id ${{ secrets.APP_EXTERNAL_ID }} )
+
+          echo "AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)" >> $GITHUB_OUTPUT
+          echo "AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)" >> $GITHUB_OUTPUT
+          echo "AWS_SESSION_TOKEN=$(echo $CREDS | jq -r .Credentials.SessionToken)" >> $GITHUB_OUTPUT
+
+      # -----------------------------
+      # Login to Destination ECR
+      # -----------------------------
+      - name: Login to destination ECR
+        env:
+          AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin \
+              "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      # -----------------------------
+      # Tag + Push
+      # -----------------------------
+      - name: Tag and Push Image
+        run: |
+          docker tag temp-image:latest \
+            "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:${IMAGE_TAG}"
+
+          docker push \
+            "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO}:${IMAGE_TAG}"
