@@ -1,0 +1,377 @@
+name: CVAT ultimate custom image build
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Select environment
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+      modelframework:
+        description: cvat upgrade set up
+        required: true
+        default: CVAT
+        type: choice
+        options:
+          - CVAT
+
+jobs:
+  deploy:
+    runs-on:
+      group: global-scale-set-large
+
+    env:
+      AWS_REGION: us-east-1
+      NAMESPACE: "cvat"
+      RELEASE_NAME: "cvat-test"
+      SELECTED_FRAMEWORK: ${{ github.event.inputs.modelframework }}
+
+    steps:
+      - name: Set environment variables dynamically
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "dev" ]; then
+            echo "AWS_DESTINATION_ACCOUNT=042740340767" >> $GITHUB_ENV
+            echo "CLUSTER_NAME=uai3062831-dbc-dev-cluster" >> $GITHUB_ENV
+            echo "EFS_ID=fs-09afda4fc029b1a90" >> $GITHUB_ENV
+            echo "IAM_ROLE_S3_ARN=arn:aws:iam::042740340767:role/app-uai3062831-dhr-dbc-dev-dev-sa-eks" >> $GITHUB_ENV
+            echo "LB_ROLE_ARN=arn:aws:iam::042740340767:role/app-uai3062831-loadbalancer-controller-dev" >> $GITHUB_ENV
+            echo "ROLE_ARN=arn:aws:iam::042740340767:role/app-uai3062831/app-uai3062831-dhr-dbc-dev-gha-role" >> $GITHUB_ENV
+            echo "AWS_DESTINATION_REPO_server=app-uai3062831-dhr-dbc-dev/cvat_backend" >> $GITHUB_ENV
+            echo "AWS_DESTINATION_REPO_ui=app-uai3062831-dhr-dbc-dev/cvat_ui" >> $GITHUB_ENV  
+            echo "VALUES_FILE=values_dev.yaml" >> $GITHUB_ENV
+            echo "SECRET_PATH=app-uai3062831/dhr-dbc/dev/db-credentials" >> $GITHUB_ENV
+            echo "FETCH_DB=true" >> $GITHUB_ENV
+          elif [ "${{ github.event.inputs.environment }}" = "stage" ]; then 
+            echo "AWS_DESTINATION_ACCOUNT=743157045178" >> $GITHUB_ENV
+            echo "CLUSTER_NAME=uai3062831-dbc-stg-cluster" >> $GITHUB_ENV
+            echo "EFS_ID=fs-0c60eeca58eadcca5" >> $GITHUB_ENV
+            echo "IAM_ROLE_S3_ARN=arn:aws:iam::743157045178:role/app-uai3062831-dbc-stage-s3-access-sa-eks" >> $GITHUB_ENV
+            echo "LB_ROLE_ARN=arn:aws:iam::743157045178:role/app-uai3062831-loadbalancer-controller-stage" >> $GITHUB_ENV
+            echo "ROLE_ARN=arn:aws:iam::743157045178:role/app-uai3062831/app-uai3062831-dhr-dbc-stg-gha-role" >> $GITHUB_ENV
+            echo "AWS_DESTINATION_REPO_server=app-uai3062831-dbc-stage/cvat_backend" >> $GITHUB_ENV
+            echo "AWS_DESTINATION_REPO_ui=app-uai3062831-dbc-stage/cvat_ui" >> $GITHUB_ENV  
+            echo "VALUES_FILE=values_stage.yaml" >> $GITHUB_ENV
+            echo "SECRET_PATH=app-uai3062831/dbc/stg/db-credentials" >> $GITHUB_ENV
+            echo "FETCH_DB=true" >> $GITHUB_ENV
+          else
+             echo "AWS_DESTINATION_ACCOUNT=794370998958" >> $GITHUB_ENV
+             echo "CLUSTER_NAME=uai3062831-dbc-prd-cluster" >> $GITHUB_ENV
+             echo "EFS_ID=fs-0d1eb690526c40087" >> $GITHUB_ENV
+             echo "IAM_ROLE_S3_ARN=arn:aws:iam::794370998958:role/app-uai3062831-dbc-prd-s3-access-sa-eks" >> $GITHUB_ENV
+             echo "LB_ROLE_ARN=arn:aws:iam::794370998958:role/app-uai3062831-loadbalancer-controller-prd" >> $GITHUB_ENV
+             echo "ROLE_ARN=arn:aws:iam::794370998958:role/app-uai3062831/app-uai3062831-dhr-dbc-prd-gha-role" >> $GITHUB_ENV
+             echo "AWS_DESTINATION_REPO_server=app-uai3062831-dbc-prd/cvat_backend" >> $GITHUB_ENV
+             echo "AWS_DESTINATION_REPO_ui=app-uai3062831-dbc-prd/cvat_ui" >> $GITHUB_ENV  
+             echo "VALUES_FILE=values_prd.yaml" >> $GITHUB_ENV
+             echo "SECRET_PATH=app-uai3062831/dbc/prd/db-credentials" >> $GITHUB_ENV
+             echo "FETCH_DB=true" >> $GITHUB_ENV
+            fi
+          
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Assume AWS Role
+        id: assume-role
+        run: |
+          CREDS=$(aws sts assume-role \
+            --role-arn $ROLE_ARN \
+            --role-session-name "ghrunner-${GITHUB_RUN_ID}" \
+            --external-id ${{ secrets.APP_EXTERNAL_ID }} )
+
+          export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)
+          export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)
+          export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r .Credentials.SessionToken)
+
+          echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> $GITHUB_ENV
+          echo "AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}" >> $GITHUB_ENV
+
+      - name: Debug AWS identity
+        run: |
+          aws sts get-caller-identity   
+
+      - name: Docker credentials
+        # if: github.ref == 'refs/heads/main'
+        # env:
+        #   AWS_ACCESS_KEY_ID: ${{ steps.assume-role.outputs.AWS_ACCESS_KEY_ID }}
+        #   AWS_SECRET_ACCESS_KEY: ${{ steps.assume-role.outputs.AWS_SECRET_ACCESS_KEY }}
+        #   AWS_SESSION_TOKEN: ${{ steps.assume-role.outputs.AWS_SESSION_TOKEN }}
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin \
+              "${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      - name: Create new GE-Image tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN_FOR_REPO_PUSH }}
+        run: |
+          # Fetch existing tags starting with 'GE-'
+          existing_tags=$(git fetch --tags && git tag -l 'GE-*')
+
+          # Extract the version number from the latest tag
+          latest_version=$(echo "$existing_tags" | sort -V | tail -1 | cut -d'-' -f2 | cut -d' ' -f1)
+
+          # If no tags are found, set version to 1
+          if [ -z "$latest_version" ]; then
+            new_version=1.0
+          else
+            major=${latest_version%.*}
+            minor=${latest_version##*.}
+            if [ $minor -eq 9 ]; then
+              major=$((major + 1))
+              minor=0
+            else
+              minor=$((minor + 1))
+            fi
+            new_version=$major.$minor
+          fi
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          # Create a new tag
+          git tag -a "GE-$new_version" -m "UT-$new_version"
+          git push origin "GE-$new_version"
+          echo IMAGE_TAG=GE-$new_version >> $GITHUB_ENV
+        shell: bash
+
+
+      
+      - name: Build Docker image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        # working-directory: cvat
+        env: 
+          DOCKER_BUILDKIT: 1
+          COMPOSE_DOCKER_CLI_BUILD: 1
+          HTTP_PROXY: "http://proxy.research.ge.com:80"
+          HTTPS_PROXY: "http://proxy.research.ge.com:80"
+          NO_PROXY: "localhost,127.0.0.1,.ge.com,.build.ge.com,github.apps.gevernova.net"
+          PROXY: "http://proxy.research.ge.com:80"
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.dev.yml \
+            build
+          BUILT_IMAGE=$(docker images --format "table {{.Repository}}:{{.Tag}}" | grep -E "\.dkr\.ecr\." | head -1)
+          echo "BUILT_IMAGE_NAME=$BUILT_IMAGE" >> $GITHUB_ENV  
+  
+
+          
+
+     
+      # -----------------------------
+      # TAG SERVER IMAGE
+      # -----------------------------
+
+      - name: Tag CVAT Server Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          docker tag cvat/server:GEIMAGE ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_server}:${IMAGE_TAG}
+          # ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          # docker tag cvat/server:GEIMAGE \
+          #   ${ECR_REGISTRY}/${AWS_DESTINATION_REPO_server}:GEIMAGE
+      
+
+      #aqua scaning for cvat server
+
+      - uses: actions-extra/aqua-wrappers/image-scan@master
+        id: server_scan
+        with:
+          artifact: cvat/server:GEIMAGE
+          api-key: ${{ secrets.AQUA_KEY }}
+          api-secret: ${{ secrets.AQUA_SECRET }}
+          registry-username: ${{ secrets.AQUA_USERNAME }}
+          registry-password: ${{ secrets.AQUA_PASSWORD }}
+          img-scan-token: ${{ secrets.AQUA_TOKEN }}
+
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v3
+        with:
+          name: Container-Scan-Results_server
+          path: ${{ steps.server_scan.outputs.scan-result-json }}
+          retention-days: 5
+
+      - name: Aqua Docker Results
+        run: |
+          # result_summary=$(cat results/out.json| jq .vulnerability_summary)
+          # critical=$(echo $result_summary | jq -r .critical)
+          # high=$(echo $result_summary | jq -r .high)
+          # critical=${critical:-0}
+          # high=${high:-0}
+          # let defects=critical+high
+          # echo defects: $defects
+          # following check will be added later
+          # if [ "$defects" -gt 0 ]; then
+          #   echo "Exiting because the defects is greater than 0"
+          #   exit 1  # You can use any non-zero exit code to indicate failure
+          # fi
+      - name: Aqua Results Check
+        env:
+          RESULTS: ${{ steps.server_scan.outputs.scan-result-json }}
+        run: |
+          echo success
+          result_summary="$(cat ${RESULTS} | jq .vulnerability_summary)"
+          echo "${result_summary}"
+          critical="$(echo ${result_summary} | jq -r '.critical // 0')"
+          echo "critical: ${critical}"
+          high="$(echo ${result_summary} | jq -r '.high // 0')"
+          echo "high: ${high}"
+          echo "To view full scan results, you can view them here in Aqua: https://cloud.aquasec.com/ah/#/sc/images"
+          # let defects=critical+high
+          # defects=$((critical + high))
+          # echo defects: $defects
+          # # following check will be added later
+          # if [ "$defects" -gt 0 ]; then
+          #   echo "Exiting because the defects is greater than 0"
+          #   exit 1  # You can use any non-zero exit code to indicate failure
+          # fi        
+
+    
+
+      
+      # -----------------------------
+      # PUSH SERVER IMAGE
+      # -----------------------------
+
+      - name: Push CVAT Server Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          docker push ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_server}:${IMAGE_TAG}
+          # ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          # docker push \
+          #   ${ECR_REGISTRY}/${AWS_DESTINATION_REPO_server}:GEIMAGE
+          
+      # -----------------------------
+      # PUSH SERVER LATEST IMAGE
+      # -----------------------------
+      - name: Push CVAT Server Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          # Tag and push as latest
+          docker tag cvat/server:GEIMAGE ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_server}:latest
+
+          # delete previous latest
+          aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO_server} --image-ids imageTag=latest || true
+
+          # push new latest
+          docker push ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_server}:latest
+
+      # -----------------------------
+      # TAG UI IMAGE
+      # -----------------------------
+
+      - name: Tag CVAT UI Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          docker tag cvat/ui:GEIMAGE ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_ui}:${IMAGE_TAG}
+          # ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          # docker tag cvat/ui:GEIMAGE \
+          #   ${ECR_REGISTRY}/${AWS_DESTINATION_REPO_ui}:GEIMAGE
+          # docker tag cvat/ui:GEIMAGE ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_ui}:${IMAGE_TAG}
+          
+     
+      #aqua scaning for cvat ui
+
+      - uses: actions-extra/aqua-wrappers/image-scan@master
+        id: ui_scan
+        with:
+          artifact: cvat/ui:GEIMAGE
+          api-key: ${{ secrets.AQUA_KEY }}
+          api-secret: ${{ secrets.AQUA_SECRET }}
+          registry-username: ${{ secrets.AQUA_USERNAME }}
+          registry-password: ${{ secrets.AQUA_PASSWORD }}
+          img-scan-token: ${{ secrets.AQUA_TOKEN }}
+
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v3
+        with:
+          name: Container-Scan-Results_ui
+          path: ${{ steps.ui_scan.outputs.scan-result-json }}
+          retention-days: 5
+
+      - name: Aqua Docker Results
+        run: |
+          # result_summary=$(cat results/out.json| jq .vulnerability_summary)
+          # critical=$(echo $result_summary | jq -r .critical)
+          # high=$(echo $result_summary | jq -r .high)
+          # critical=${critical:-0}
+          # high=${high:-0}
+          # let defects=critical+high
+          # echo defects: $defects
+          # following check will be added later
+          # if [ "$defects" -gt 0 ]; then
+          #   echo "Exiting because the defects is greater than 0"
+          #   exit 1  # You can use any non-zero exit code to indicate failure
+          # fi
+      - name: Aqua Results Check
+        env:
+          RESULTS: ${{ steps.ui_scan.outputs.scan-result-json }}
+        run: |
+          echo success
+          result_summary="$(cat ${RESULTS} | jq .vulnerability_summary)"
+          echo "${result_summary}"
+          critical="$(echo ${result_summary} | jq -r '.critical // 0')"
+          echo "critical: ${critical}"
+          high="$(echo ${result_summary} | jq -r '.high // 0')"
+          echo "high: ${high}"
+          echo "To view full scan results, you can view them here in Aqua: https://cloud.aquasec.com/ah/#/sc/images"
+          # let defects=critical+high
+          # defects=$((critical + high))
+          # echo defects: $defects
+          # # following check will be added later
+          # if [ "$defects" -gt 0 ]; then
+          #   echo "Exiting because the defects is greater than 0"
+          #   exit 1  # You can use any non-zero exit code to indicate failure
+          # fi     
+
+
+
+      # -----------------------------
+      # PUSH UI IMAGE
+      # -----------------------------
+
+      - name: Push CVAT UI Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          docker push ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_ui}:${IMAGE_TAG}
+          # ECR_REGISTRY=${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+          # docker push \
+          #   ${ECR_REGISTRY}/${AWS_DESTINATION_REPO_ui}:GEIMAGE
+         
+      
+       # -----------------------------
+      # PUSH UI LATEST IMAGE
+      # -----------------------------
+      - name: Push CVAT Server Image
+        if: env.SELECTED_FRAMEWORK == 'CVAT'
+        run: |
+          # Tag and push as latest
+          docker tag cvat/ui:GEIMAGE ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_ui}:latest
+          
+          # delete previous latest
+          aws ecr batch-delete-image --repository-name ${AWS_DESTINATION_REPO_ui} --image-ids imageTag=latest || true
+
+          # push new latest
+          docker push ${AWS_DESTINATION_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${AWS_DESTINATION_REPO_ui}:latest
+
+
+          
+
+
+      
+
+      
